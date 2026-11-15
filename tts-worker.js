@@ -67,10 +67,18 @@ async function run({ id, type, engine, voice, text }) {
 }
 
 let epoch = 0; // the page bumps this when the listener skips, so stale jobs are dropped
+const KMODEL = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx';
+async function status(id) {
+  let k = false, p = [];
+  try { k = !!(await (await caches.open('transformers-cache')).match(KMODEL)); } catch {}
+  try { if (!piperMod) piperMod = await import(PIPER); p = await piperMod.stored(); } catch {}
+  postMessage({ id, k, p });
+}
 onmessage = ({ data }) => {
   if (data.type === 'epoch') { epoch = data.n; return; }
+  if (data.type === 'status') { status(data.id); return; }
   chain = chain.then(() => {
-    if (data.epoch !== undefined && data.epoch < epoch) return postMessage({ id: data.id, err: 'stale' });
+    if (data.type === 'gen' && data.epoch !== undefined && data.epoch < epoch) return postMessage({ id: data.id, err: 'stale' });
     return run(data);
   });
 };

@@ -145,7 +145,7 @@ article pre{white-space:pre-wrap;font:15px/1.5 ui-monospace,monospace;background
 .vopt .vn{flex:1;min-width:0}
 .vopt .vn b{display:block;font-size:15px;font-weight:600}
 .vopt .vn span{font-size:12.5px;color:var(--mute)}
-.tag{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:1px}
+.tag{white-space:nowrap;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:1px}
 .vopt .sel .tag{background:#fff}
 .prev{border:1px solid var(--line);background:#fff;border-radius:999px;width:36px;height:36px;display:grid;place-items:center;cursor:pointer;flex:none}
 .prev svg{width:14px;height:14px;fill:var(--ink);stroke:none}
@@ -158,6 +158,20 @@ article pre{white-space:pre-wrap;font:15px/1.5 ui-monospace,monospace;background
 .sw{appearance:none;-webkit-appearance:none;width:46px;height:28px;border-radius:999px;background:#e3dce1;position:relative;cursor:pointer;transition:background .2s;flex:none;margin:0}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s}
 .sw:checked{background:var(--accent)}.sw:checked::after{left:21px}
+.st{font-size:12px;font-weight:600;border-radius:999px;padding:4px 9px;white-space:nowrap;flex:none}
+.st.ok{color:#2f7a4b;background:#e8f5ec}
+.st.get{border:1px solid var(--accent);color:var(--accent);background:#fff;cursor:pointer;padding:6px 11px}
+.st.ing{color:var(--accent);background:var(--accent-soft)}
+.nowc{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-top:6px}
+.nowc .eq{width:34px;height:34px;border-radius:10px;background:var(--accent);display:grid;place-items:center;flex:none}
+.nowc .eq svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round}
+.nowc div{flex:1;min-width:0}.nowc small{display:block;font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.nowc b{font-size:16px;font-weight:600}.nowc span{display:block;font-size:13px;color:var(--ink2)}
+.pack{border:1.5px dashed var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:12px}
+.pack div{flex:1;min-width:0}.pack b{display:block;font-size:15px;font-weight:600}.pack span{font-size:12.5px;color:var(--mute)}
+.pack.off{opacity:.5}
+.vnow{border:0;background:transparent;font:600 12px var(--sans);color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:5px;padding:0;max-width:52%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.vnow svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;flex:none}
 .vgroup{font-size:12.5px;color:var(--mute);margin:-2px 0 8px;line-height:1.45}
 .vopt.off{opacity:.45;pointer-events:none}
 .prev.busy svg{display:none}.prev.busy::after{content:"";width:14px;height:14px;border:2px solid #ddd;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
@@ -224,7 +238,7 @@ details.dev summary::after{content:" ▾"}
 <div class="prep" id="prep" hidden></div>
 <div class="player" id="player" hidden>
   <div class="track" id="track"><div class="rail"></div><div class="fill" id="fill"></div><div class="knob" id="knob"></div></div>
-  <div class="times"><span id="tDone">0%</span><span id="tLeft"></span></div>
+  <div class="times"><span id="tDone">0%</span><button class="vnow" id="vnow" title="Change voice"></button><span id="tLeft"></span></div>
   <div class="ctr">
     <button class="pill" id="speed" title="Speed">1×</button>
     <div class="mid">
@@ -467,26 +481,68 @@ function curSel(){
   return v||ALL().find(x=>x.id===defaultVoice());
 }
 const accent=l=>({US:'US',GB:'UK',IN:'India',AU:'Australia',IE:'Ireland',ZA:'South Africa',NZ:'New Zealand',SG:'Singapore'}[l.split(/[-_]/)[1]]||l);
-const vrow=(v,cur,off)=>`<div class="vopt${v.id===cur.id?' sel':''}${off?' off':''}" data-v="${esc(v.id)}">
-    <div class="vn"><b>${esc(v.name)}</b><span>${esc(v.desc)}</span></div>
-    <button class="prev" data-p="${esc(v.id)}" title="Hear a sample"><svg viewBox="0 0 24 24">${PLAY}</svg></button></div>`;
-function renderVoices(){
-  const cur=curSel(),noGPU=hasGPU===false;
-  $('vlist').innerHTML=`
-  <h4>Studio voices <span class="tag">MOST NATURAL</span></h4>
-  <p class="vgroup">${noGPU?'This browser can’t run these. Try Chrome on a laptop, or Safari on iOS 26.':'One-time 330 MB download, then instant and offline. Use Wi-Fi the first time.'}</p>
-  <div class="vlist">${STUDIO.map(v=>vrow(v,cur,noGPU)).join('')}</div>
-  <h4>Light voices</h4>
-  <p class="vgroup">Work on any phone. About 60 MB each, one time.</p>
-  <div class="vlist">${LIGHT.map(v=>vrow(v,cur)).join('')}</div>
-  ${voices.length?`<details class="dev"${cur.e==='d'?' open':''}><summary>This device's voices</summary><div class="vlist">${voices.map(v=>vrow(v,cur)).join('')}</div></details>`:''}`;
+const WAVE='<svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>';
+const ready={k:false,p:new Set()},dl={};
+const dlKey=v=>v.e==='k'?'k':v.v;
+const isReady=v=>v.e==='d'||(v.e==='k'?ready.k:ready.p.has(v.v));
+const kind=v=>v.e==='k'?'Studio voice':v.e==='p'?'Light voice':'Built-in voice';
+function vstate(v){
+  if(isReady(v))return v.e==='d'?'Built into this device':'Downloaded';
+  if(dl[dlKey(v)]!=null)return `Downloading ${dl[dlKey(v)]}%`;
+  return `Not downloaded · ${v.e==='k'?'330':'60'} MB`;
 }
+async function refreshReady(){
+  const r=await new Promise(res=>{const id=++wid;waits[id]=res;W.postMessage({type:'status',id})});
+  ready.k=!!r.k;ready.p=new Set(r.p||[]);renderVoices();
+}
+function getVoice(v){
+  const k=dlKey(v);if(!v||isReady(v)||dl[k]!=null)return;
+  dl[k]=0;renderVoices();
+  ask({type:'warm',engine:v.e,voice:v.v}).then(r=>{
+    delete dl[k];
+    if(r.err){if(String(r.err).includes('nogpu'))hasGPU=false;alert(`Couldn’t download ${v.e==='k'?'the Studio voices':v.name}. Check your connection and try again.`)}
+    else if(v.e==='k')ready.k=true;else ready.p.add(v.v);
+    renderVoices();
+  });
+}
+const vrow=(v,cur)=>`<div class="vopt${v.id===cur.id?' sel':''}" data-v="${esc(v.id)}">
+    <div class="vn"><b>${esc(v.name)}</b><span>${esc(v.desc)}${v.id===cur.id?' · <b style="display:inline;font-size:12.5px;color:var(--accent)">In use</b>':''}</span></div>
+    ${v.e==='d'?'':isReady(v)?'<span class="st ok">✓ Downloaded</span>':dl[dlKey(v)]!=null?`<span class="st ing">${dl[dlKey(v)]}%</span>`:`<button class="st get" data-g="${esc(v.id)}">↓ ${v.e==='k'?'330':'60'} MB</button>`}
+    ${isReady(v)?`<button class="prev" data-p="${esc(v.id)}" title="Hear a sample"><svg viewBox="0 0 24 24">${PLAY}</svg></button>`:''}</div>`;
+function renderVoices(){
+  const cur=curSel();if(!cur||!$('vlist'))return;
+  const noGPU=hasGPU===false,studioOK=ready.k&&!noGPU;
+  const readyL=[...(studioOK?STUDIO:[]),...LIGHT.filter(isReady)];
+  const getL=LIGHT.filter(v=>!isReady(v));
+  const kpct=dl.k;
+  $('vlist').innerHTML=`
+  <div class="nowc"><div class="eq">${WAVE}</div><div><small>${playing?'Reading with':'Selected voice'}</small><b>${esc(cur.name)}</b><span>${kind(cur)} · ${vstate(cur)}${!isReady(cur)&&dl[dlKey(cur)]==null?' (downloads when you press play)':''}</span></div></div>
+
+  <h4>Downloaded · ready to use</h4>
+  ${readyL.length?`<div class="vlist">${readyL.map(v=>vrow(v,cur)).join('')}</div>`:`<p class="vgroup">Nothing downloaded yet. Pick a voice below.</p>`}
+  ${voices.length?`<details class="dev"${cur.e==='d'?' open':''}><summary>Built-in voices (${voices.length}) · sound more robotic</summary><div class="vlist">${voices.map(v=>vrow(v,cur)).join('')}</div></details>`:''}
+
+  ${studioOK&&!getL.length?'':`<h4>Not downloaded yet</h4>`}
+  ${studioOK?'':`<div class="pack${noGPU?' off':''}"><div><b>Studio voices <span class="tag">MOST NATURAL</span></b><span>${noGPU?'This browser can’t run them. Try Chrome on a laptop, or Safari on iOS 26.':'Heart, Bella, Michael, Fenrir, Emma, George. One download (330 MB) gets all 6. Use Wi-Fi.'}</span></div>
+    ${noGPU?'':kpct!=null?`<span class="st ing">${kpct}%</span>`:`<button class="st get" data-g="k:af_heart">↓ 330 MB</button>`}</div>`}
+  ${getL.length?`<p class="vgroup" style="margin-top:12px">Light voices work on any phone. About 60 MB each.</p><div class="vlist">${getL.map(v=>vrow(v,cur)).join('')}</div>`:''}`;
+  updateNow();
+}
+function updateNow(){
+  const v=curSel();if(!v||!$('vnow'))return;
+  const k=dlKey(v);
+  $('vnow').innerHTML=WAVE+esc(v.name)+' · '+(dl[k]!=null&&!isReady(v)?`downloading ${dl[k]}%`:kind(v).replace(' voice',''));
+}
+$('vnow').onclick=()=>openSheet();
 if(synth){loadVoices();synth.onvoiceschanged=loadVoices}
 $('vlist').addEventListener('click',e=>{
   const p=e.target.closest('[data-p]');
   if(p){e.stopPropagation();preview(ALL().find(x=>x.id===p.dataset.p),p);return}
+  const g=e.target.closest('[data-g]');
+  if(g){e.stopPropagation();getVoice(ALL().find(x=>x.id===g.dataset.g));return}
   const o=e.target.closest('[data-v]');if(!o)return;
-  store.set('voice2',o.dataset.v);renderVoices();if(playing){unlock();play()}
+  const v=ALL().find(x=>x.id===o.dataset.v);
+  store.set('voice2',v.id);if(!isReady(v)&&!playing)getVoice(v);renderVoices();if(playing){unlock();play()}
 });
 const SAMPLE='Hi! This is how I sound when I read your articles.';
 async function preview(v,btn){
@@ -506,7 +562,7 @@ const SILENT=URL.createObjectURL(new Blob([new Uint8Array([82,73,70,70,40,0,0,0,
 // iOS only lets audio start from a tap, so play a silent clip on the first tap
 function unlock(){if(unlocked)return;unlocked=true;audio.src=SILENT;audio.play().catch(()=>{unlocked=false})}
 const W=new Worker('tts-worker.js',{type:'module'}),waits={};
-W.onmessage=({data})=>{if(data.type==='progress'){prepProgress(data);return}const f=waits[data.id];if(f){delete waits[data.id];f(data)}};
+W.onmessage=({data})=>{if(data.type==='progress'){const k=data.engine==='k'?'k':data.voice;dl[k]=data.pct;prepProgress(data);if($('sheet').classList.contains('open'))renderVoices();else updateNow();return}const f=waits[data.id];if(f){delete waits[data.id];f(data)}};
 W.onerror=()=>{};
 const ask=m=>new Promise(res=>{const id=++wid;waits[id]=res;W.postMessage({...m,id,epoch})});
 const clips=new Map();let clipVoice='';
@@ -515,7 +571,7 @@ function clip(i){
   if(clipVoice!==v.id){dropClips(true);clipVoice=v.id}
   if(!clips.has(i)){
     const c={done:false};
-    c.p=ask({type:'gen',engine:v.e,voice:v.v,text:speakable(sents[i].text)}).then(r=>{if(r.err)throw new Error(r.err);c.done=true;c.url=URL.createObjectURL(r.blob);return c.url});
+    c.p=ask({type:'gen',engine:v.e,voice:v.v,text:speakable(sents[i].text)}).then(r=>{if(r.err)throw new Error(r.err);if(!isReady(v)){if(v.e==='k')ready.k=true;else ready.p.add(v.v);delete dl[dlKey(v)];renderVoices()}c.done=true;c.url=URL.createObjectURL(r.blob);return c.url});
     c.p.catch(()=>{if(clips.get(i)===c)clips.delete(i)});
     clips.set(i,c);
   }
@@ -600,7 +656,7 @@ applyPrefs();
 $('size').onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;store.set('fs',b.dataset.s);applyPrefs();follow(true)};
 $('focusT').onchange=()=>{store.set('focus',$('focusT').checked);applyPrefs()};
 $('followT').onchange=()=>{store.set('follow',$('followT').checked);applyPrefs()};
-function openSheet(){$('scrim').hidden=false;requestAnimationFrame(()=>{$('scrim').classList.add('open');$('sheet').classList.add('open')});renderVoices()}
+function openSheet(){refreshReady();$('scrim').hidden=false;requestAnimationFrame(()=>{$('scrim').classList.add('open');$('sheet').classList.add('open')});renderVoices()}
 function closeSheet(){$('scrim').classList.remove('open');$('sheet').classList.remove('open');setTimeout(()=>$('scrim').hidden=true,250)}
 $('setBtn').onclick=openSheet;$('closeSheet').onclick=closeSheet;$('scrim').onclick=closeSheet;
 
@@ -637,7 +693,7 @@ function estimate(s,my){const cps=14.5*rate();let t=0;s.words.forEach((w,i)=>{se
 function pause(){playing=false;gen++;audio.pause();cancelAnimationFrame(tickRAF);synth&&synth.cancel();clearTimeout(fallbackT);setIcon();save();keepAwake(false)}
 function stop(){playing=false;gen++;audio.pause();audioIdx=-1;cancelAnimationFrame(tickRAF);hidePrep();synth&&synth.cancel();clearTimeout(fallbackT);setIcon();keepAwake(false)}
 function finished(){stop();sents.forEach(s=>s.el.classList.remove('on'));if(curWord)curWord.classList.remove('on');mark(true);$('doneCard').hidden=false;$('doneCard').scrollIntoView({behavior:'smooth',block:'center'})}
-function setIcon(){$('pi').innerHTML=playing?PAUSE:PLAY;$('play').title=playing?'Pause':'Play';if(!playing)$('play').classList.remove('wait')}
+function setIcon(){if($('sheet').classList.contains('open'))renderVoices();$('pi').innerHTML=playing?PAUSE:PLAY;$('play').title=playing?'Pause':'Play';if(!playing)$('play').classList.remove('wait')}
 function wordsBefore(i){let n=0;for(let k=0;k<i&&k<sents.length;k++)n+=sents[k].words.length;return n}
 function mark(end){
   sents.forEach((s,i)=>{s.el.classList.toggle('on',i===idx&&!end);s.el.classList.toggle('done',i<idx)});
@@ -681,6 +737,7 @@ addEventListener('keydown',e=>{if($('reader').hidden||/INPUT|SELECT|TEXTAREA/.te
 // Chrome sometimes goes silent on long listens; nudge it
 setInterval(()=>{if(playing&&curSel().e==='d'&&synth&&!synth.speaking&&!synth.pending&&Date.now()-lastAct>3000)play()},2000);
 addEventListener('pagehide',save);
+refreshReady();
 route();
 </script>
 </body></html>
