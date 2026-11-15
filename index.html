@@ -158,6 +158,15 @@ article pre{white-space:pre-wrap;font:15px/1.5 ui-monospace,monospace;background
 .sw{appearance:none;-webkit-appearance:none;width:46px;height:28px;border-radius:999px;background:#e3dce1;position:relative;cursor:pointer;transition:background .2s;flex:none;margin:0}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s}
 .sw:checked{background:var(--accent)}.sw:checked::after{left:21px}
+.vgroup{font-size:12.5px;color:var(--mute);margin:-2px 0 8px;line-height:1.45}
+.vopt.off{opacity:.45;pointer-events:none}
+.prev.busy svg{display:none}.prev.busy::after{content:"";width:14px;height:14px;border:2px solid #ddd;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+details.dev summary{cursor:pointer;font:600 12px var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--mute);margin:20px 0 8px;list-style:none}
+details.dev summary::-webkit-details-marker{display:none}
+details.dev summary::after{content:" ▾"}
+.prep{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + var(--safe-b));z-index:5;background:#fff;border:1px solid var(--line);color:var(--ink);border-radius:16px;padding:10px 14px;font-size:13.5px;box-shadow:0 10px 24px -12px rgba(0,0,0,.3);width:max-content;max-width:calc(100% - 32px);text-align:center}
+.prep b{font-weight:600}.prep small{display:block;color:var(--mute);font-size:12px;margin-top:2px}
+.prep .bar{height:4px;border-radius:4px;background:#eee7ea;margin-top:8px;overflow:hidden}.prep .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
 .warn{font-size:13.5px;color:var(--ink2);background:#fff8e6;border:1px solid #f4e3b0;border-radius:12px;padding:10px 12px;margin-top:8px}
 @media (max-width:520px){.paste .chipbtn span{display:none}.go span{display:none}.go{padding:12px 14px}.player{padding:12px 12px 10px;border-radius:24px}.pill{min-width:54px;padding:0 10px}.pill .pl{display:none}}
 </style></head><body>
@@ -184,11 +193,11 @@ article pre{white-space:pre-wrap;font:15px/1.5 ui-monospace,monospace;background
       <button data-u="https://www.nngroup.com/articles/usability-101-introduction-to-usability/">Usability 101</button>
     </div>
   </div>
-  <details class="tip" id="tip"><summary><svg class="i" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3zM9.5 20h5"/></svg>Get a natural-sounding voice (free, one time)</summary>
-    <p>Your phone and laptop already include free, human-sounding voices. They just need a one-time download. Once you have one, it appears at the top of the voice list here.</p>
-    <p><b>iPhone:</b> Settings → Accessibility → Spoken Content → Voices → English → pick <b>Ava</b>, <b>Zoe</b> or <b>Evan</b> → download the <b>Premium</b> version.</p>
-    <p><b>Mac:</b> System Settings → Accessibility → Spoken Content → System voice → Manage Voices → English → tick <b>Ava (Premium)</b> or <b>Zoe (Premium)</b>. Then reload this page.</p>
-    <p><b>Android:</b> Settings → Accessibility → Text-to-speech output → Google → Install voice data → English → pick a voice.</p>
+  <details class="tip" id="tip"><summary><svg class="i" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3zM9.5 20h5"/></svg>About the voices</summary>
+    <p>The voices are free, open-source AI voices that run on your own phone or laptop. Nothing is sent anywhere and nothing is charged.</p>
+    <p><b>Studio voices</b> sound the most human. They need a newer browser (Chrome on a laptop, or Safari on iOS 26) and a one-time 330 MB download, so use Wi-Fi the first time.</p>
+    <p><b>Light voices</b> work on any phone. Each is a one-time download of about 60 MB.</p>
+    <p>After the first download, the voice starts instantly and works offline. Change voice from the <b>Voice</b> button while listening.</p>
   </details>
   <p class="foot">Free. Your articles and progress stay on this device.</p>
 </main>
@@ -212,6 +221,7 @@ article pre{white-space:pre-wrap;font:15px/1.5 ui-monospace,monospace;background
 
 <button class="backnow" id="backnow" hidden><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M12 5v14M6 13l6 6 6-6"/></svg>Back to where it's reading</button>
 
+<div class="prep" id="prep" hidden></div>
 <div class="player" id="player" hidden>
   <div class="track" id="track"><div class="rail"></div><div class="fill" id="fill"></div><div class="knob" id="knob"></div></div>
   <div class="times"><span id="tDone">0%</span><span id="tLeft"></span></div>
@@ -230,9 +240,7 @@ article pre{white-space:pre-wrap;font:15px/1.5 ui-monospace,monospace;background
 <div class="sheet" id="sheet" role="dialog" aria-label="Settings">
   <div class="grab"></div>
   <h3>Listening <button class="ib" id="closeSheet" title="Close"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h3>
-  <h4>Voice</h4>
-  <div class="vlist" id="vlist"></div>
-  <div id="vwarn"></div>
+  <div id="vlist"></div>
   <h4>Reading</h4>
   <div class="row"><div>Text size</div><div class="seg" id="size"><button data-s="17px" style="font-size:14px">A</button><button data-s="20px" style="font-size:17px">A</button><button data-s="23px" style="font-size:20px">A</button></div></div>
   <div class="row"><div>Focus mode<small>Fade the text it hasn't read yet</small></div><input type="checkbox" class="sw" id="focusT"></div>
@@ -429,43 +437,159 @@ function addText(parent,tag,text,cls){
   }
   if(tag)parent.appendChild(el);
 }
-document.addEventListener('click',e=>{const s=e.target.closest('.s');if(!s||$('reader').hidden)return;idx=+s.dataset.i;userScrollAt=0;play()});
+document.addEventListener('click',e=>{const s=e.target.closest('.s');if(!s||$('reader').hidden)return;idx=+s.dataset.i;userScrollAt=0;newEpoch();unlock();play()});
 
 /* ================= VOICES ================= */
+// Studio = Kokoro (needs WebGPU), Light = Piper (any device), Device = the browser's own voices.
+const STUDIO=[['af_heart','Heart','US · warm and clear'],['af_bella','Bella','US · bright'],['am_michael','Michael','US · calm'],['am_fenrir','Fenrir','US · deep'],['bf_emma','Emma','UK · soft'],['bm_george','George','UK · steady']]
+  .map(([v,n,d])=>({id:'k:'+v,e:'k',v,name:n,desc:d}));
+const LIGHT=[['en_US-lessac-medium','Lessac','US · clear'],['en_US-amy-medium','Amy','US · friendly'],['en_US-ryan-medium','Ryan','US · relaxed'],['en_GB-cori-medium','Cori','UK · gentle'],['en_GB-alan-medium','Alan','UK · plain']]
+  .map(([v,n,d])=>({id:'p:'+v,e:'p',v,name:n,desc:d}));
 const NOVELTY=/^(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Junior|Kathy|Ralph|Grandma|Grandpa|Eddy|Flo|Reed|Rocko|Sandy|Shelley)\b/i;
 const quality=v=>/premium/i.test(v.name)?0:/enhanced|neural|natural|siri/i.test(v.name)?1:/^google/i.test(v.name)?2:/samantha|daniel|karen|moira|rishi|tessa|serena|veena|ava|zoe|evan|nathan|aaron|nicky|allison|susan|tom/i.test(v.name)?3:4;
+let hasGPU=null;
+(async()=>{try{hasGPU=!!(navigator.gpu&&await navigator.gpu.requestAdapter())}catch{hasGPU=false}renderVoices()})();
 function loadVoices(){
   const all=synth?synth.getVoices():[];
   voices=all.filter(v=>/^en[-_]/i.test(v.lang)&&!NOVELTY.test(v.name));
   voices.sort((a,b)=>quality(a)-quality(b)||(a.lang.includes('IN')?-1:0)-(b.lang.includes('IN')?-1:0)||a.name.localeCompare(b.name));
-  // keep the list short: best few + one per accent
   const seen=new Set(),short=[];
   for(const v of voices){const k=v.name.replace(/\s*\(.*\)/,'');if(seen.has(k))continue;seen.add(k);short.push(v)}
-  voices=short.slice(0,14);
+  voices=short.slice(0,10).map(v=>({id:'d:'+v.name,e:'d',sv:v,name:v.name.replace(/\s*\(.*\)/,'').replace(/^Microsoft\s+|\s+Online.*$/g,''),desc:accent(v.lang)+(quality(v)<=1?' · natural':'')}));
   renderVoices();
 }
-const curVoice=()=>voices.find(v=>v.name===store.get('voice',''))||voices[0];
+const ALL=()=>[...STUDIO,...LIGHT,...voices];
+const defaultVoice=()=>hasGPU===false?'p:en_US-lessac-medium':'k:af_heart';
+function curSel(){
+  const id=store.get('voice2',null);
+  let v=ALL().find(x=>x.id===id);
+  if(v&&v.e==='k'&&hasGPU===false)v=null;
+  return v||ALL().find(x=>x.id===defaultVoice());
+}
 const accent=l=>({US:'US',GB:'UK',IN:'India',AU:'Australia',IE:'Ireland',ZA:'South Africa',NZ:'New Zealand',SG:'Singapore'}[l.split(/[-_]/)[1]]||l);
+const vrow=(v,cur,off)=>`<div class="vopt${v.id===cur.id?' sel':''}${off?' off':''}" data-v="${esc(v.id)}">
+    <div class="vn"><b>${esc(v.name)}</b><span>${esc(v.desc)}</span></div>
+    <button class="prev" data-p="${esc(v.id)}" title="Hear a sample"><svg viewBox="0 0 24 24">${PLAY}</svg></button></div>`;
 function renderVoices(){
-  const cv=curVoice();
-  $('vlist').innerHTML=voices.length?voices.map((v,i)=>{const q=quality(v);return `<div class="vopt${v===cv?' sel':''}" data-v="${i}">
-    <div class="vn"><b>${esc(v.name.replace(/\s*\(.*\)/,'').replace(/^Microsoft\s+|\s+Online.*$/g,''))}${q<=1?'<span class="tag">NATURAL</span>':''}</b><span>${accent(v.lang)}${q===2?' · online voice':''}</span></div>
-    <button class="prev" data-p="${i}" title="Hear a sample"><svg viewBox="0 0 24 24">${PLAY}</svg></button></div>`}).join(''):'<p class="warn">No English voices found on this device.</p>';
-  $('vwarn').innerHTML=voices.length&&quality(voices[0])>1?`<div class="warn">No natural voice on this device yet. They're free: open the home page and tap <b>Get a natural-sounding voice</b>.</div>`:'';
+  const cur=curSel(),noGPU=hasGPU===false;
+  $('vlist').innerHTML=`
+  <h4>Studio voices <span class="tag">MOST NATURAL</span></h4>
+  <p class="vgroup">${noGPU?'This browser can’t run these. Try Chrome on a laptop, or Safari on iOS 26.':'One-time 330 MB download, then instant and offline. Use Wi-Fi the first time.'}</p>
+  <div class="vlist">${STUDIO.map(v=>vrow(v,cur,noGPU)).join('')}</div>
+  <h4>Light voices</h4>
+  <p class="vgroup">Work on any phone. About 60 MB each, one time.</p>
+  <div class="vlist">${LIGHT.map(v=>vrow(v,cur)).join('')}</div>
+  ${voices.length?`<details class="dev"${cur.e==='d'?' open':''}><summary>This device's voices</summary><div class="vlist">${voices.map(v=>vrow(v,cur)).join('')}</div></details>`:''}`;
 }
 if(synth){loadVoices();synth.onvoiceschanged=loadVoices}
 $('vlist').addEventListener('click',e=>{
   const p=e.target.closest('[data-p]');
-  if(p){e.stopPropagation();const v=voices[p.dataset.p];stop();const u=new SpeechSynthesisUtterance('Hi! This is how I sound when I read your articles.');u.voice=v;u.lang=v.lang;u.rate=rate();synth.speak(u);return}
+  if(p){e.stopPropagation();preview(ALL().find(x=>x.id===p.dataset.p),p);return}
   const o=e.target.closest('[data-v]');if(!o)return;
-  store.set('voice',voices[o.dataset.v].name);renderVoices();if(playing)play();
+  store.set('voice2',o.dataset.v);renderVoices();if(playing){unlock();play()}
 });
+const SAMPLE='Hi! This is how I sound when I read your articles.';
+async function preview(v,btn){
+  if(!v)return;stop();unlock();
+  if(v.e==='d'){const u=new SpeechSynthesisUtterance(SAMPLE);u.voice=v.sv;u.lang=v.sv.lang;u.rate=rate();synth.speak(u);return}
+  btn.classList.add('busy');prepFor={...v,preview:true};
+  const r=await ask({type:'gen',engine:v.e,voice:v.v,text:SAMPLE});
+  btn.classList.remove('busy');hidePrep();
+  if(r.err){btn.title='Couldn’t load this voice';return}
+  audio.onended=null;audio.src=URL.createObjectURL(r.blob);audio.playbackRate=rate();audioIdx=-1;audio.play().catch(()=>{});
+}
+
+/* ================= NEURAL ENGINE ================= */
+const audio=new Audio();audio.preload='auto';try{audio.preservesPitch=true}catch{}
+let audioIdx=-1,unlocked=false,epoch=0,wid=0,prepFor=null,tickRAF=0;
+const SILENT=URL.createObjectURL(new Blob([new Uint8Array([82,73,70,70,40,0,0,0,87,65,86,69,102,109,116,32,16,0,0,0,1,0,1,0,64,31,0,0,128,62,0,0,2,0,16,0,100,97,116,97,4,0,0,0,0,0,0,0])],{type:'audio/wav'}));
+// iOS only lets audio start from a tap, so play a silent clip on the first tap
+function unlock(){if(unlocked)return;unlocked=true;audio.src=SILENT;audio.play().catch(()=>{unlocked=false})}
+const W=new Worker('tts-worker.js',{type:'module'}),waits={};
+W.onmessage=({data})=>{if(data.type==='progress'){prepProgress(data);return}const f=waits[data.id];if(f){delete waits[data.id];f(data)}};
+W.onerror=()=>{};
+const ask=m=>new Promise(res=>{const id=++wid;waits[id]=res;W.postMessage({...m,id,epoch})});
+const clips=new Map();let clipVoice='';
+function clip(i){
+  const v=curSel();
+  if(clipVoice!==v.id){dropClips(true);clipVoice=v.id}
+  if(!clips.has(i)){
+    const c={done:false};
+    c.p=ask({type:'gen',engine:v.e,voice:v.v,text:speakable(sents[i].text)}).then(r=>{if(r.err)throw new Error(r.err);c.done=true;c.url=URL.createObjectURL(r.blob);return c.url});
+    c.p.catch(()=>{if(clips.get(i)===c)clips.delete(i)});
+    clips.set(i,c);
+  }
+  return clips.get(i);
+}
+function dropClips(all){
+  for(const [i,c] of clips){
+    if(all||(!c.done)||i<idx-2||i>idx+6){if(c.url)URL.revokeObjectURL(c.url);clips.delete(i)}
+  }
+}
+function newEpoch(){epoch++;W.postMessage({type:'epoch',n:epoch});dropClips(false)}
+function showPrep(html){$('prep').innerHTML=html;$('prep').hidden=false}
+function hidePrep(){$('prep').hidden=true;prepFor=null}
+function prepProgress(d){
+  if(!prepFor||$('reader').hidden&&!prepFor.preview)return;
+  const v=prepFor;
+  showPrep(`<b>Getting ${esc(v.name)} ready · ${d.pct}%</b><small>One-time download (${d.mb} MB). After this it starts instantly.</small><div class="bar"><i style="width:${d.pct}%"></i></div>`);
+}
+function wordTimes(s){
+  // share the clip's length across words by length, with extra time after punctuation
+  const w=s.words.map(x=>{const t=x.textContent;return t.length+1.2+(/[,;:]$/.test(t)?2.5:/[.!?]$/.test(t)?3.5:0)});
+  const tot=w.reduce((a,b)=>a+b,0);let acc=0;return w.map(x=>(acc+=x)/tot);
+}
+function tick(s,my){
+  cancelAnimationFrame(tickRAF);const ends=wordTimes(s);
+  const step=()=>{if(my!==gen||audio.paused)return;
+    const d=audio.duration;if(d&&isFinite(d)){const f=(audio.currentTime-0.08)/(d-0.25);let n=ends.findIndex(e=>e>f);lightWord(s,n<0?ends.length-1:n)}
+    tickRAF=requestAnimationFrame(step)};
+  tickRAF=requestAnimationFrame(step);
+}
+async function playNeural(){
+  const s=sents[idx];if(!s){stop();return}
+  const my=++gen;playing=true;setIcon();$('startBtn').hidden=true;keepAwake(true);mark();follow();media();
+  if(audioIdx===idx&&clipVoice===curSel().id&&audio.currentTime>0&&!audio.ended&&audio.src!==SILENT){
+    audio.playbackRate=rate();audio.play().then(()=>tick(s,my)).catch(()=>{});return}
+  if(audio.src!==SILENT)audio.pause();
+  const c=clip(idx);
+  for(let k=1;k<=3;k++)if(sents[idx+k])clip(idx+k);
+  if(!c.done){$('play').classList.add('wait');prepFor=curSel();
+    setTimeout(()=>{if(my===gen&&!c.done&&$('prep').hidden)showPrep(`<b>Getting ${esc(curSel().name)} ready…</b><small>The first time takes a moment.</small>`)},1200)}
+  let url;
+  try{url=await c.p}catch(e){if(my!==gen)return;if(e.message==='stale')return playNeural();return neuralFailed(e)}
+  if(my!==gen)return;
+  hidePrep();$('play').classList.remove('wait');
+  audioIdx=idx;audio.src=url;audio.playbackRate=rate();
+  audio.onended=()=>{if(my!==gen)return;cancelAnimationFrame(tickRAF);advance(s,my)};
+  try{await audio.play()}catch(e){if(my===gen){playing=false;setIcon();keepAwake(false)}return}
+  if(my===gen)tick(s,my);else audio.pause();
+}
+let retried='';
+function neuralFailed(e){
+  const v=curSel();console.warn('voice failed',v.id,e);
+  if(retried!==v.id&&!String(e.message).includes('nogpu')){retried=v.id;setTimeout(()=>{if(playing)play()},1500);return}
+  hidePrep();
+  const next=v.e==='k'?LIGHT[0]:voices[0];
+  if(!next){stop();alert('Couldn’t load a voice. Check your connection and try again.');return}
+  if(v.e==='k'&&String(e.message).includes('nogpu'))hasGPU=false;
+  store.set('voice2',next.id);renderVoices();
+  showPrep(`<b>Couldn’t load ${esc(v.name)}</b><small>Switched to ${esc(next.name)} for now. You can pick ${esc(v.name)} again from Voice.</small>`);
+  setTimeout(()=>{if($('prep').innerHTML.includes('Couldn’t'))hidePrep()},5000);
+  play();
+}
+function media(){
+  if(!('mediaSession' in navigator)||!doc)return;
+  try{navigator.mediaSession.metadata=new MediaMetadata({title:doc.title,artist:doc.site,artwork:[{src:'icon-180.png',sizes:'180x180',type:'image/png'}]});
+    navigator.mediaSession.setActionHandler('play',()=>play());navigator.mediaSession.setActionHandler('pause',()=>pause());
+    navigator.mediaSession.setActionHandler('nexttrack',()=>jump(1));navigator.mediaSession.setActionHandler('previoustrack',()=>jump(-1));}catch{}
+}
 
 /* ================= SETTINGS ================= */
 const rate=()=>+store.get('rate',1);
 function setSpeedLabel(){$('speed').textContent=rate()+'×'}
 setSpeedLabel();
-$('speed').onclick=()=>{const r=rate(),n=SPEEDS[(SPEEDS.indexOf(r)+1)%SPEEDS.length];store.set('rate',n);setSpeedLabel();if(doc)mark();if(playing)play()};
+$('speed').onclick=()=>{const r=rate(),n=SPEEDS[(SPEEDS.indexOf(r)+1)%SPEEDS.length];store.set('rate',n);setSpeedLabel();if(doc)mark();if(curSel().e!=='d'){audio.playbackRate=n}else if(playing)play()};
 function applyPrefs(){
   document.documentElement.style.setProperty('--fs',store.get('fs','20px'));
   [...$('size').children].forEach(b=>b.classList.toggle('on',b.dataset.s===store.get('fs','20px')));
@@ -483,29 +607,35 @@ $('setBtn').onclick=openSheet;$('closeSheet').onclick=closeSheet;$('scrim').oncl
 /* ================= PLAYBACK ================= */
 const speakable=t=>t.replace(/[–—]/g,', ').replace(/\s+/g,' ').trim();
 function play(){
+  if(curSel().e!=='d'){synth&&synth.cancel();clearTimeout(fallbackT);return playNeural()}
+  audio.pause();
   if(!synth){alert('This browser cannot read aloud.');return}
   synth.cancel();clearTimeout(fallbackT);
   const s=sents[idx];if(!s){stop();return}
   playing=true;setIcon();$('startBtn').hidden=true;keepAwake(true);
   const my=++gen;mark();follow();
   const u=new SpeechSynthesisUtterance(speakable(s.text));
-  const v=curVoice();if(v){u.voice=v;u.lang=v.lang}
+  const v=curSel().sv;if(v){u.voice=v;u.lang=v.lang}
   u.rate=rate();gotBoundary=false;
   u.onboundary=e=>{lastAct=Date.now();if(my!==gen||(e.name&&e.name!=='word'))return;gotBoundary=true;lightWord(s,wordAt(s.text,e.charIndex))};
   u.onstart=()=>{lastAct=Date.now();if(my!==gen)return;$('play').classList.remove('wait');
     fallbackT=setTimeout(()=>{if(!gotBoundary&&my===gen)estimate(s,my)},650)};
   u.onend=()=>{lastAct=Date.now();if(my!==gen)return;clearTimeout(fallbackT);
-    s.el.classList.add('done');
-    if(idx<sents.length-1){idx++;save();setTimeout(()=>{if(my===gen&&playing)play()},s.heading?320:60)}
-    else{idx=sents.length;save();finished()}};
+    advance(s,my)};
   u.onerror=e=>{if(my===gen&&!['interrupted','canceled'].includes(e.error)){stop()}};
   lastAct=Date.now();synth.speak(u);
+}
+function advance(s,my){
+  s.el.classList.add('done');
+  for(const [i,c] of clips)if(i<idx-1&&c.done){URL.revokeObjectURL(c.url);clips.delete(i)}
+  if(idx<sents.length-1){idx++;save();setTimeout(()=>{if(my===gen&&playing)play()},s.heading?320:60)}
+  else{idx=sents.length;save();finished()}
 }
 function wordAt(orig,ci){const sp=speakable(orig);let n=0;for(const w of wordSeg.segment(sp)){if(w.index>ci)break;if(w.isWordLike)n++}return Math.max(0,n-1)}
 function lightWord(s,n){const w=s.words[Math.min(n,s.words.length-1)];if(curWord)curWord.classList.remove('on');if(w){w.classList.add('on');curWord=w}}
 function estimate(s,my){const cps=14.5*rate();let t=0;s.words.forEach((w,i)=>{setTimeout(()=>{if(my===gen&&playing)lightWord(s,i)},t*1000);t+=(w.textContent.length+1.3)/cps})}
-function pause(){playing=false;gen++;synth&&synth.cancel();clearTimeout(fallbackT);setIcon();save();keepAwake(false)}
-function stop(){playing=false;gen++;synth&&synth.cancel();clearTimeout(fallbackT);setIcon();keepAwake(false)}
+function pause(){playing=false;gen++;audio.pause();cancelAnimationFrame(tickRAF);synth&&synth.cancel();clearTimeout(fallbackT);setIcon();save();keepAwake(false)}
+function stop(){playing=false;gen++;audio.pause();audioIdx=-1;cancelAnimationFrame(tickRAF);hidePrep();synth&&synth.cancel();clearTimeout(fallbackT);setIcon();keepAwake(false)}
 function finished(){stop();sents.forEach(s=>s.el.classList.remove('on'));if(curWord)curWord.classList.remove('on');mark(true);$('doneCard').hidden=false;$('doneCard').scrollIntoView({behavior:'smooth',block:'center'})}
 function setIcon(){$('pi').innerHTML=playing?PAUSE:PLAY;$('play').title=playing?'Pause':'Play';if(!playing)$('play').classList.remove('wait')}
 function wordsBefore(i){let n=0;for(let k=0;k<i&&k<sents.length;k++)n+=sents[k].words.length;return n}
@@ -532,9 +662,9 @@ $('backnow').onclick=()=>{userScrollAt=0;follow(true)};
 async function keepAwake(on){try{if(on&&!wake&&navigator.wakeLock){wake=await navigator.wakeLock.request('screen');wake.addEventListener('release',()=>wake=null)}else if(!on&&wake){await wake.release();wake=null}}catch{}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&playing)keepAwake(true)});
 
-function jump(d){idx=Math.max(0,Math.min(sents.length-1,idx+d));if(playing)play();else{mark();follow(true)}}
-$('play').onclick=()=>{if(playing)pause();else{if(idx>=sents.length)idx=0;$('play').classList.add('wait');play()}};
-$('startBtn').onclick=()=>{$('play').classList.add('wait');play()};
+function jump(d){idx=Math.max(0,Math.min(sents.length-1,idx+d));newEpoch();if(playing)play();else{mark();follow(true)}}
+$('play').onclick=()=>{if(playing)pause();else{unlock();if(idx>=sents.length)idx=0;$('play').classList.add('wait');play()}};
+$('startBtn').onclick=()=>{unlock();$('play').classList.add('wait');play()};
 $('prev').onclick=()=>jump(-1);$('next').onclick=()=>jump(1);
 $('back').onclick=()=>{location.hash=''};
 $('nextArt').onclick=()=>{location.hash=''};
@@ -543,13 +673,13 @@ $('nextArt').onclick=()=>{location.hash=''};
   const at=e=>{const r=t.getBoundingClientRect(),f=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));let target=f*doc.words,n=0,i=sents.findIndex(s=>(n+=s.words.length)>=target);return i<0?sents.length-1:i};
   t.addEventListener('pointerdown',e=>{drag=true;t.setPointerCapture(e.pointerId);idx=at(e);mark()});
   t.addEventListener('pointermove',e=>{if(drag){idx=at(e);mark()}});
-  t.addEventListener('pointerup',()=>{if(!drag)return;drag=false;save();if(playing)play();else follow(true)});
+  t.addEventListener('pointerup',()=>{if(!drag)return;drag=false;newEpoch();save();if(playing)play();else follow(true)});
 })();
 addEventListener('keydown',e=>{if($('reader').hidden||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;
   if(e.code==='Space'){e.preventDefault();$('play').click()}
   if(e.key==='ArrowRight')jump(1);if(e.key==='ArrowLeft')jump(-1);if(e.key==='Escape')closeSheet()});
 // Chrome sometimes goes silent on long listens; nudge it
-setInterval(()=>{if(playing&&synth&&!synth.speaking&&!synth.pending&&Date.now()-lastAct>3000)play()},2000);
+setInterval(()=>{if(playing&&curSel().e==='d'&&synth&&!synth.speaking&&!synth.pending&&Date.now()-lastAct>3000)play()},2000);
 addEventListener('pagehide',save);
 route();
 </script>
