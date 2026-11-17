@@ -38,6 +38,9 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stro
 .pdfbtn svg{width:18px;height:18px}
 .pdfrow small{color:var(--mute);font-size:13px}
 .drop .paste,.drop .pdfbtn{border-color:var(--accent);background:var(--accent-soft)}
+.ocrnote{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px;margin:-6px 0 20px;font-size:13.5px}
+.ocrnote div{flex:1}.ocrnote b{font-weight:600;display:block}.ocrnote small{color:var(--mute);font-size:12.5px}
+.pdfbtn.sm{padding:7px 11px;font-size:13px;border-style:solid;flex:none}
 .msg{font-size:14px;color:var(--mute);margin:12px 4px 0;min-height:21px;display:flex;align-items:center;gap:8px}
 .msg.err{color:#a3243b}
 .spin{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
@@ -234,6 +237,7 @@ details.dev summary::after{content:" ▾"}
     <div class="site" id="artSite"></div>
     <h1 class="title" id="artTitle"></h1>
     <div class="facts" id="facts"></div>
+    <div class="ocrnote" id="ocrNote" hidden></div>
     <button class="start" id="startBtn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><span>Start listening</span></button>
     <article id="art"></article>
     <div class="done-card" id="doneCard" hidden><b>You finished this one</b><p>Nice. Paste the next article whenever you're ready.</p><button class="start" id="nextArt" style="margin:0"><span>Read another</span></button></div>
@@ -318,18 +322,34 @@ async function openPDF(file){
   if(!file)return;
   if(!/pdf$/i.test(file.type)&&!/\.pdf$/i.test(file.name)){say('That isn’t a PDF. Pick a .pdf file.','err');return}
   const id='pdf:'+file.name+':'+file.size+':'+file.lastModified;
-  if(store.get('doc:'+id,null)||memDocs[id]){location.hash=encodeURIComponent(id);return}
-  say('Reading the PDF…','load');
+  const saved=store.get('doc:'+id,null)||memDocs[id];
+  const go=()=>{if(location.hash.slice(1)===encodeURIComponent(id))route();else location.hash=encodeURIComponent(id)};
+  if(saved&&!(saved.ocr&&saved.ocr.done<saved.ocr.total)){go();return}
+  if(!$('reader').hidden){location.hash=''}
+  say('Opening the PDF…','load');
+  let pdf;
+  try{pdf=await loadPDF(file)}catch(e){console.warn(e);say(/password/i.test(e.name+e.message)?'This PDF is password-protected. Remove the password and try again.':'Couldn’t open that PDF. It may be damaged.','err');return}
   try{
-    const d=await extractPDF(file,id,p=>say(`Reading the PDF… page ${p.done} of ${p.total}`,'load'));
-    memDocs[id]=d;store.set('doc:'+id,d);
-    location.hash=encodeURIComponent(id);
-  }catch(e){console.warn(e);say(e.userMsg||'Couldn’t read that PDF. It may be password-protected or damaged.','err')}
+    if(saved){memDocs[id]=saved;go();startOCR(pdf,saved).catch(ocrFailed);return} // carry on where it stopped
+    if(await isScanned(pdf)){
+      let title='';try{const m=await pdf.getMetadata();title=(m.info&&m.info.Title||'').trim()}catch{}
+      if(!title||title.length<4||/^(untitled|microsoft word)/i.test(title))title=prettyName(file.name);
+      const d={url:id,title:title.slice(0,160),site:`Scanned PDF · ${pdf.numPages} pages`,blocks:[],pdf:true,ocr:{done:0,total:pdf.numPages}};
+      memDocs[id]=d;
+      say('Scanned PDF: getting text recognition ready (one-time ~15 MB download)…','load');
+      startOCR(pdf,d,words=>{
+        if(words>0){store.set('doc:'+id,d);go()}
+        else say('Couldn’t find any text in this PDF, even after reading the page images.','err');
+      }).catch(ocrFailed);
+      return;
+    }
+    const d=await extractPDF(pdf,file,id,p=>say(`Reading the PDF… page ${p.done} of ${p.total}`,'load'));
+    pdf.destroy();
+    memDocs[id]=d;store.set('doc:'+id,d);go();
+  }catch(e){console.warn(e);say(e.userMsg||'Couldn’t read that PDF. It may be damaged.','err')}
 }
-async function extractPDF(file,id,onPage){
-  const pdfjs=await import(PDFJS+'pdf.min.mjs');
-  pdfjs.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.mjs';
-  const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+function ocrFailed(e){console.warn(e);say('Couldn’t run text recognition here. Check your connection and try again.','err');ocrStatus()}
+async function extractPDF(pdf,file,id,onPage){
   const pages=[];
   for(let n=1;n<=pdf.numPages;n++){
     const page=await pdf.getPage(n),tc=await page.getTextContent();
@@ -395,16 +415,101 @@ async function extractPDF(file,id,onPage){
   }
   flush();
   const words=blocks.reduce((n,b)=>n+b.text.split(/\s+/).length,0);
-  if(words<20){const e=new Error('notext');e.userMsg='This PDF has no readable text. It’s probably a scan (pictures of pages), which can’t be read aloud.';throw e}
+  if(words<20){const e=new Error('notext');e.userMsg='This PDF has almost no text in it.';throw e}
   let title='';try{const m=await pdf.getMetadata();title=(m.info&&m.info.Title||'').trim()}catch{}
   if(!title||/^(untitled|microsoft word|document\d*)/i.test(title)||title.length<4){
     const hs=blocks.filter(b=>/^h/.test(b.type)&&b.page<=2&&b.text.length>3);
     const h=hs.reduce((a,b)=>!a||b.size>a.size?b:a,null);title=h?h.text:file.name.replace(/\.pdf$/i,'').replace(/[_-]+/g,' ')}
   const ti=blocks.findIndex(b=>/^h/.test(b.type)&&b.text===title);
   if(ti>=0&&ti<4)blocks.splice(ti,1);
-  pdf.destroy();
   return {url:id,title:title.slice(0,160),site:`PDF · ${pages.length} page${pages.length>1?'s':''}`,blocks,pdf:true};
 }
+/* ---------- scanned PDFs: turn page pictures into text on the device (Tesseract, free) ---------- */
+const TESS='https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.esm.min.js';
+let ocrRun=null,waitingMore=false;
+async function loadPDF(file){
+  const pdfjs=await import(PDFJS+'pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.mjs';
+  return pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+}
+async function isScanned(pdf){
+  const N=pdf.numPages,pick=new Set();
+  for(let n=1;n<=Math.min(N,8);n++)pick.add(n);
+  [0.3,0.5,0.7].forEach(f=>pick.add(Math.max(1,Math.round(N*f))));
+  let chars=0;
+  for(const n of pick){const tc=await (await pdf.getPage(n)).getTextContent();chars+=tc.items.reduce((a,i)=>a+(i.str||'').trim().length,0)}
+  return chars<60*pick.size;
+}
+const DE=new Set('der die das und ist nicht mit für ein eine zu von auf den dem sich im auch wird werden sind oder als bei des einer zur zum durch'.split(' '));
+const EN=new Set('the and is of to in that with for are it as on be this by or which can from'.split(' '));
+const lang=t=>{let d=0,e=0;for(const w of t.toLowerCase().match(/[a-zäöüß]+/g)||[]){if(DE.has(w))d++;if(EN.has(w))e++}return d>e&&d>=2?'de':e>=1?'en':'?'};
+function cleanOCR(paras){
+  // paras: [{text,conf}] in reading order from one page
+  let out=[];
+  for(let {text,conf} of paras){
+    text=text.replace(/[|{}\[\]_~¦\\]+/g,' ').replace(/\s+([,.;:])(?=\s|$)/g,'$1').replace(/(^|\s)[,.;:](?=\s)/g,' ').replace(/\s+/g,' ').replace(/^[^A-Za-z0-9“"‘'(]+/,'').trim();
+    const letters=(text.match(/[A-Za-z]/g)||[]).length;
+    if(conf<55||text.length<3||letters<text.length*0.55)continue;
+    if(/^\d+\s+[A-Z][A-Z ’'&,-]+$/.test(text)||/^[A-Z][A-Z ’'&,-]+\s+\d+$/.test(text))continue; // running footer like "20 UNDERSTANDING YOUR BRAND"
+    out.push(text);
+  }
+  // bilingual books: if a page has English, drop its German paragraphs
+  const langs=out.map(lang);
+  if(langs.includes('en'))out=out.filter((t,i)=>langs[i]!=='de');
+  // stitch paragraphs that were cut mid-sentence
+  const merged=[];
+  for(const t of out){const p=merged[merged.length-1];
+    if(p&&!/[.!?:”"’)]$/.test(p)&&/^[a-z]/.test(t)&&!(p.length<60&&p===p.toUpperCase()))merged[merged.length-1]=(/[a-z]-$/.test(p)?p.slice(0,-1):p+' ')+t;
+    else merged.push(t)}
+  return merged.map(t=>{
+    const caps=t===t.toUpperCase()&&/[A-Z]{3}/.test(t);
+    return caps&&t.length<90?{type:'h3',text:t.toLowerCase().replace(/(^|[\s(“"])([a-z])/g,(m,a,b)=>a+b.toUpperCase())}:{type:'p',text:t};
+  });
+}
+const prettyName=n=>{let t=n.replace(/\.pdf$/i,'').replace(/^dokumen\.pub_/i,'').replace(/\s*-\s*libgen\.\w+$/i,'').replace(/-?\d{10,13}$/,'').replace(/-?\d*nbsped/i,'').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();return t.charAt(0).toUpperCase()+t.slice(1)};
+async function startOCR(pdf,d,onFirst){
+  if(ocrRun)ocrRun.cancel=true;
+  const run={id:d.url,cancel:false};ocrRun=run;
+  const T=await import(TESS),TT=T.default||T;
+  const worker=await TT.createWorker('eng');
+  await worker.setParameters({tessedit_pageseg_mode:'3'}); // find columns and boxes, not one big block
+  let first=false;
+  try{
+    for(let n=d.ocr.done+1;n<=d.ocr.total&&!run.cancel;n++){
+      const page=await pdf.getPage(n),vp0=page.getViewport({scale:1});
+      const sc=Math.min(4,3000/Math.max(vp0.width,vp0.height)),vp=page.getViewport({scale:sc});
+      const c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);
+      await page.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;page.cleanup();
+      const r=await worker.recognize(c,{},{text:true,blocks:true});
+      c.width=c.height=0;
+      if(run.cancel)break;
+      const paras=(r.data.blocks||[]).flatMap(b=>(b.paragraphs||[]).map(p=>({text:p.text||'',conf:p.confidence||0})));
+      const blocks=cleanOCR(paras);
+      d.blocks.push(...blocks);d.ocr.done=n;
+      store.set('doc:'+d.url,d);
+      if(doc===d&&!$('reader').hidden)appendBlocks(blocks);
+      ocrStatus();
+      const words=d.blocks.reduce((a,b)=>a+b.text.split(/\s+/).length,0);
+      if(!first&&(words>=40||n===d.ocr.total)){first=true;onFirst&&onFirst(words)}
+      else if(!first)say(`Scanned PDF: turning pages into text… page ${n} of ${d.ocr.total}`,'load');
+    }
+  }finally{
+    await worker.terminate().catch(()=>{});
+    if(ocrRun===run)ocrRun=null;
+    if(!first&&!run.cancel)onFirst&&onFirst(0);
+    ocrStatus();
+    if(doc===d&&waitingMore&&!(d.ocr.done<d.ocr.total)){waitingMore=false;idx=sents.length;finished()}
+  }
+}
+function ocrStatus(){
+  const n=$('ocrNote');if(!n)return;
+  if(!doc||!doc.ocr||doc.ocr.done>=doc.ocr.total){n.hidden=true;return}
+  n.hidden=false;
+  const live=ocrRun&&ocrRun.id===doc.url;
+  n.innerHTML=live?`<span class="spin"></span><div><b>Scanned PDF: turning pages into text · ${doc.ocr.done} of ${doc.ocr.total}</b><small>You can listen now. New pages appear as they’re ready.</small></div>`
+    :`<div><b>Pages 1–${doc.ocr.done} of ${doc.ocr.total} are ready</b><small>Upload this PDF again to turn the rest into text.</small></div><label class="pdfbtn sm">Upload<input type="file" accept="application/pdf,.pdf" hidden onchange="openPDF(this.files[0])"></label>`;
+}
+
 $('pdfIn').onchange=e=>{const f=e.target.files[0];e.target.value='';openPDF(f)};
 // drag a PDF onto the page (laptop)
 addEventListener('dragover',e=>{if($('home').hidden)return;e.preventDefault();document.body.classList.add('drop')});
@@ -421,7 +526,7 @@ function route(){
   load(url);
 }
 async function load(url){
-  let d=store.get('doc:'+url,null)||memDocs[url];
+  let d=memDocs[url]||store.get('doc:'+url,null);
   if(!d&&url.startsWith('pdf:')){location.replace('#');say('Upload that PDF again to keep listening. Your place is saved.','err');return}
   if(!d){
     $('home').hidden=false;$('reader').hidden=true;$('player').hidden=true;showHome();
@@ -526,23 +631,38 @@ function render(){
   const siteHTML=`<img src="${fav(doc.url)}" alt=""><span>${esc(doc.site)}</span>`;
   $('topSite').innerHTML=siteHTML;$('artSite').innerHTML=siteHTML;$('orig').href=doc.pdf?'#':doc.url;$('orig').style.display=doc.pdf?'none':'';
   $('artTitle').textContent='';
-  const art=$('art');art.innerHTML='';sents=[];
+  const art=$('art');art.innerHTML='';sents=[];listEl=null;
   addText($('artTitle'),null,doc.title);
-  let list=null;
-  for(const b of doc.blocks){
-    if(b.type==='li'){if(!list){list=document.createElement('ul');art.appendChild(list)}addText(list,'li',b.text);continue}
-    list=null;
+  renderBlocks(doc.blocks);
+  doc.words=sents.reduce((n,s)=>n+s.words.length,0);
+  ocrStatus();
+  $('facts').innerHTML=factsHTML();
+  const pos=store.get('pos:'+doc.url,{i:0});
+  idx=Math.max(0,Math.min(pos.i||0,sents.length-1));
+  $('startBtn').querySelector('span').textContent=idx>0?`Continue · ${pos.pct}%`:'Start listening';
+  $('startBtn').hidden=false;$('doneCard').hidden=true;
+  mark();scrollTo(0,0);
+}
+const factsHTML=()=>`<span>${doc.ocr&&doc.ocr.done<doc.ocr.total?'So far: ':''}${mins(doc.words)} min listen</span><span>${doc.words.toLocaleString()} words</span>`;
+let listEl=null;
+function renderBlocks(blocks){
+  const art=$('art');
+  for(const b of blocks){
+    if(b.type==='li'){if(!listEl){listEl=document.createElement('ul');art.appendChild(listEl)}addText(listEl,'li',b.text);continue}
+    listEl=null;
     if(b.type==='img'){const f=document.createElement('figure');f.innerHTML=`<img loading="lazy" src="${esc(b.src)}" alt="${esc(b.alt)}" onerror="this.parentNode.remove()">`;art.appendChild(f);continue}
     if(b.type==='figcaption'){addText(art,'p',b.text,'cap');continue}
     addText(art,b.type==='h1'?'h2':b.type,b.text);
   }
+}
+// new pages from text recognition: add them to the end without disturbing playback
+function appendBlocks(blocks){
+  if(!blocks.length)return;
+  renderBlocks(blocks);
   doc.words=sents.reduce((n,s)=>n+s.words.length,0);
-  $('facts').innerHTML=`<span>${mins(doc.words)} min listen</span><span>${doc.words.toLocaleString()} words</span>`;
-  const pos=store.get('pos:'+doc.url,{i:0});
-  idx=Math.min(pos.i||0,sents.length-1);
-  $('startBtn').querySelector('span').textContent=idx>0?`Continue · ${pos.pct}%`:'Start listening';
-  $('startBtn').hidden=false;$('doneCard').hidden=true;
-  mark();scrollTo(0,0);
+  $('facts').innerHTML=factsHTML();
+  if(!playing)mark();
+  if(waitingMore&&sents[idx]){waitingMore=false;$('play').classList.remove('wait');if(playing)play()}
 }
 function addText(parent,tag,text,cls){
   const el=tag?document.createElement(tag):parent;if(cls)el.className=cls;
@@ -814,6 +934,7 @@ function advance(s,my){
   s.el.classList.add('done');
   for(const [i,c] of clips)if(i<idx-1&&c.done){URL.revokeObjectURL(c.url);clips.delete(i)}
   if(idx<sents.length-1){idx++;save();setTimeout(()=>{if(my===gen&&playing)play()},s.heading?320:60)}
+  else if(doc.ocr&&doc.ocr.done<doc.ocr.total&&ocrRun&&ocrRun.id===doc.url){idx=sents.length;waitingMore=true;$('play').classList.add('wait')}
   else{idx=sents.length;save();finished()}
 }
 function wordAt(orig,ci){const sp=speakable(orig);let n=0;for(const w of wordSeg.segment(sp)){if(w.index>ci)break;if(w.isWordLike)n++}return Math.max(0,n-1)}
@@ -827,7 +948,7 @@ function wordsBefore(i){let n=0;for(let k=0;k<i&&k<sents.length;k++)n+=sents[k].
 function mark(end){
   sents.forEach((s,i)=>{s.el.classList.toggle('on',i===idx&&!end);s.el.classList.toggle('done',i<idx)});
   if(curWord&&(!sents[idx]||!sents[idx].el.contains(curWord))){curWord.classList.remove('on');curWord=null}
-  const done=end?doc.words:wordsBefore(idx),pct=Math.round(done/doc.words*100);
+  const done=end?doc.words:wordsBefore(idx),pct=doc.words?Math.round(done/doc.words*100):0;
   $('fill').style.width=pct+'%';$('knob').style.left=pct+'%';
   $('tDone').textContent=pct+'% heard';$('tLeft').textContent=pct>=100?'Finished':`${mins(doc.words-done)} min left`;
 }
