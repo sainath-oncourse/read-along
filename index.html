@@ -39,6 +39,17 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stro
 .pdfrow small{color:var(--mute);font-size:13px}
 .drop .paste,.drop .pdfbtn{border-color:var(--accent);background:var(--accent-soft)}
 .ocrnote{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px;margin:-6px 0 20px;font-size:13.5px}
+.viewsw{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;margin:0 0 18px;gap:2px}
+.viewsw button{border:0;background:none;font:inherit;font-size:13.5px;font-weight:600;color:var(--mute);padding:6px 16px;border-radius:999px;cursor:pointer}
+.viewsw button.on{background:var(--accent);color:#fff}
+.pages{display:flex;flex-direction:column;gap:16px;margin:4px -8px 0}
+.pg{position:relative;width:100%;background:#fff;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.10),0 6px 20px rgba(0,0,0,.06);overflow:hidden;cursor:pointer}
+.pg canvas{position:absolute;inset:0;width:100%;height:100%}
+.pg canvas~.pn{display:none}
+.read.wide{max-width:980px}
+.pg .pn{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#c9c2c6;font-size:13px}
+.pvs{position:absolute;background:rgba(122,46,110,.09);border-radius:2px;pointer-events:none}
+.pvw{position:absolute;background:rgba(255,196,0,.5);mix-blend-mode:multiply;border-radius:3px;box-shadow:0 0 0 2px rgba(255,196,0,.5);pointer-events:none;transition:left .12s,top .12s,width .12s,height .12s}
 .ocrnote div{flex:1}.ocrnote b{font-weight:600;display:block}.ocrnote small{color:var(--mute);font-size:12.5px}
 .pdfbtn.sm{padding:7px 11px;font-size:13px;border-style:solid;flex:none}
 .msg{font-size:14px;color:var(--mute);margin:12px 4px 0;min-height:21px;display:flex;align-items:center;gap:8px}
@@ -239,7 +250,9 @@ details.dev summary::after{content:" ▾"}
     <div class="facts" id="facts"></div>
     <div class="ocrnote" id="ocrNote" hidden></div>
     <button class="start" id="startBtn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><span>Start listening</span></button>
+    <div class="viewsw" id="viewSw" hidden><button data-v="pages">Pages</button><button data-v="text">Text only</button></div>
     <article id="art"></article>
+    <div class="pages" id="pages" hidden></div>
     <div class="done-card" id="doneCard" hidden><b>You finished this one</b><p>Nice. Paste the next article whenever you're ready.</p><button class="start" id="nextArt" style="margin:0"><span>Read another</span></button></div>
   </div>
 </div>
@@ -323,12 +336,13 @@ async function openPDF(file){
   if(!/pdf$/i.test(file.type)&&!/\.pdf$/i.test(file.name)){say('That isn’t a PDF. Pick a .pdf file.','err');return}
   const id='pdf:'+file.name+':'+file.size+':'+file.lastModified;
   const saved=store.get('doc:'+id,null)||memDocs[id];
+  keepFile(id,file);
   const go=()=>{if(location.hash.slice(1)===encodeURIComponent(id))route();else location.hash=encodeURIComponent(id)};
   if(saved&&!(saved.ocr&&saved.ocr.done<saved.ocr.total)){go();return}
   if(!$('reader').hidden){location.hash=''}
   say('Opening the PDF…','load');
   let pdf;
-  try{pdf=await loadPDF(file)}catch(e){console.warn(e);say(/password/i.test(e.name+e.message)?'This PDF is password-protected. Remove the password and try again.':'Couldn’t open that PDF. It may be damaged.','err');return}
+  try{pdf=await usePDF(id,file)}catch(e){console.warn(e);say(/password/i.test(e.name+e.message)?'This PDF is password-protected. Remove the password and try again.':'Couldn’t open that PDF. It may be damaged.','err');return}
   try{
     if(saved){memDocs[id]=saved;go();startOCR(pdf,saved).catch(ocrFailed);return} // carry on where it stopped
     if(await isScanned(pdf)){
@@ -344,15 +358,12 @@ async function openPDF(file){
       return;
     }
     const d=await extractPDF(pdf,file,id,p=>say(`Reading the PDF… page ${p.done} of ${p.total}`,'load'));
-    pdf.destroy();
     memDocs[id]=d;store.set('doc:'+id,d);go();
   }catch(e){console.warn(e);say(e.userMsg||'Couldn’t read that PDF. It may be damaged.','err')}
 }
 function ocrFailed(e){console.warn(e);say('Couldn’t run text recognition here. Check your connection and try again.','err');ocrStatus()}
-async function extractPDF(pdf,file,id,onPage){
-  const pages=[];
-  for(let n=1;n<=pdf.numPages;n++){
-    const page=await pdf.getPage(n),tc=await page.getTextContent();
+// one page's text as lines in reading order (left column first, top to bottom)
+function pageLines(page,tc){
     // two-column pages (papers, reports): read the left column, then the right
     const upright=i=>Math.abs(i.transform[1])<0.01&&Math.abs(i.transform[2])<0.01; // skip sideways margin text
     const mid=page.getViewport({scale:1}).width/2,its=tc.items.filter(i=>i.str&&i.str.trim()&&upright(i));
@@ -367,12 +378,18 @@ async function extractPDF(pdf,file,id,onPage){
       const c=col(it);
       let ln=lines.find(l=>l.c===c&&Math.abs(l.y-y)<Math.max(size,l.size)*0.45);
       if(!ln){ln={y,size,c,parts:[]};lines.push(ln)}
-      ln.parts.push({x:it.transform[4],s:it.str,w:it.width});ln.size=Math.max(ln.size,size);
+      ln.parts.push({x:it.transform[4],y,size,s:it.str,w:it.width});ln.size=Math.max(ln.size,size);
     }
     lines.sort((a,b)=>a.c-b.c||b.y-a.y);
     for(const l of lines){l.parts.sort((a,b)=>a.x-b.x);let t='',end=null;
       for(const p of l.parts){if(end!==null&&p.x-end>l.size*0.15&&!/\s$/.test(t)&&!/^\s/.test(p.s))t+=' ';t+=p.s;end=p.x+p.w}
       l.text=t.replace(/\s+/g,' ').trim()}
+  return lines;
+}
+async function extractPDF(pdf,file,id,onPage){
+  const pages=[];
+  for(let n=1;n<=pdf.numPages;n++){
+    const page=await pdf.getPage(n),lines=pageLines(page,await page.getTextContent());
     pages.push(lines.filter(l=>l.text).map(l=>(l.page=n,l)));
     if(n%3===0||n===pdf.numPages)onPage({done:n,total:pdf.numPages});
     page.cleanup();
@@ -386,7 +403,7 @@ async function extractPDF(pdf,file,id,onPage){
   const sizes=[];pages.forEach(ls=>ls.forEach(l=>{for(let i=0;i<Math.min(l.text.length,200);i+=20)sizes.push(l.size)}));
   sizes.sort((a,b)=>a-b);const body=sizes[Math.floor(sizes.length/2)]||10;
   const blocks=[];let para=null;
-  const flush=()=>{if(para&&para.text.trim())blocks.push({type:'p',text:para.text.trim()});para=null};
+  const flush=()=>{if(para&&para.text.trim())blocks.push({type:'p',text:para.text.trim(),page:para.page});para=null};
   for(const ls of pages){
     let prevY=null,prevSize=null;
     for(const l of ls){
@@ -401,7 +418,7 @@ async function extractPDF(pdf,file,id,onPage){
         const gap=prevY===null?0:prevY-l.y;
         const bullet=/^[•●▪◦]/.test(l.text);
         if(!para||gap>l.size*1.75||gap<0||bullet)flush();
-        if(!para)para={text:''};
+        if(!para)para={text:'',page:l.page};
         const txt=bullet?l.text.replace(/^[•●▪◦]\s*/,''):l.text;
         // join a word split by a hyphen at the end of a line
         if(/[a-z]-$/.test(para.text)&&/^[a-z]/.test(txt))para.text=para.text.slice(0,-1)+txt;
@@ -469,7 +486,7 @@ function cleanOCR(paras){
 const prettyName=n=>{let t=n.replace(/\.pdf$/i,'').replace(/^dokumen\.pub_/i,'').replace(/\s*-\s*libgen\.\w+$/i,'').replace(/-?\d{10,13}$/,'').replace(/-?\d*nbsped/i,'').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();return t.charAt(0).toUpperCase()+t.slice(1)};
 async function startOCR(pdf,d,onFirst){
   if(ocrRun)ocrRun.cancel=true;
-  const run={id:d.url,cancel:false};ocrRun=run;
+  const run={id:d.url,cancel:false,pdf};ocrRun=run;
   const T=await import(TESS),TT=T.default||T;
   const worker=await TT.createWorker('eng');
   await worker.setParameters({tessedit_pageseg_mode:'3'}); // find columns and boxes, not one big block
@@ -481,10 +498,15 @@ async function startOCR(pdf,d,onFirst){
       const c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);
       await page.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;page.cleanup();
       const r=await worker.recognize(c,{},{text:true,blocks:true});
-      c.width=c.height=0;
+      const CW=c.width,CH=c.height;c.width=c.height=0;
       if(run.cancel)break;
       const paras=(r.data.blocks||[]).flatMap(b=>(b.paragraphs||[]).map(p=>({text:p.text||'',conf:p.confidence||0})));
-      const blocks=cleanOCR(paras);
+      const blocks=cleanOCR(paras);blocks.forEach(b=>b.page=n);
+      // where each word sits on the page, so the page view can highlight it
+      const toks=[];
+      for(const b of r.data.blocks||[])for(const pa of b.paragraphs||[])for(const li of pa.lines||[])for(const w of li.words||[]){const bb=w.bbox;
+        tokens(w.text||'',bb.x0,bb.x1-bb.x0,toks,(a,z)=>[a/CW,bb.y0/CH,(z-a)/CW,(bb.y1-bb.y0)/CH])}
+      await idb.put('words',d.url+':'+n,toks);delete pw[n+'@'+d.url];
       d.blocks.push(...blocks);d.ocr.done=n;
       store.set('doc:'+d.url,d);
       if(doc===d&&!$('reader').hidden)appendBlocks(blocks);
@@ -507,9 +529,152 @@ function ocrStatus(){
   n.hidden=false;
   const live=ocrRun&&ocrRun.id===doc.url;
   n.innerHTML=live?`<span class="spin"></span><div><b>Scanned PDF: turning pages into text · ${doc.ocr.done} of ${doc.ocr.total}</b><small>You can listen now. New pages appear as they’re ready.</small></div>`
-    :`<div><b>Pages 1–${doc.ocr.done} of ${doc.ocr.total} are ready</b><small>Upload this PDF again to turn the rest into text.</small></div><label class="pdfbtn sm">Upload<input type="file" accept="application/pdf,.pdf" hidden onchange="openPDF(this.files[0])"></label>`;
+    :`<div><b>Pages 1–${doc.ocr.done} of ${doc.ocr.total} are ready</b><small>Upload this PDF again to read the rest.</small></div><label class="pdfbtn sm">Upload<input type="file" accept="application/pdf,.pdf" hidden onchange="openPDF(this.files[0])"></label>`;
 }
 
+
+/* ---------- page view: the real PDF pages, with the spoken word highlighted on the page ---------- */
+// PDF files are kept on this device (IndexedDB) so the pages can be shown again later.
+const idb=(()=>{let P;const db=()=>P||(P=new Promise((res,rej)=>{const r=indexedDB.open('read-along',1);
+  r.onupgradeneeded=()=>{r.result.createObjectStore('files');r.result.createObjectStore('words')};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
+  const tx=async(st,mode,f)=>{const d=await db();return new Promise((res,rej)=>{const t=d.transaction(st,mode),q=f(t.objectStore(st));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error)})};
+  return{get:(st,k)=>tx(st,'readonly',o=>o.get(k)).catch(()=>undefined),put:(st,k,v)=>tx(st,'readwrite',o=>o.put(v,k)).catch(e=>console.warn(e)),del:(st,k)=>tx(st,'readwrite',o=>o.delete(k)).catch(()=>{})}})();
+const memFiles={};
+function keepFile(id,file){
+  memFiles[id]=file;idb.put('files',id,file);
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch{}
+  const keep=store.get('pdfFiles',[]).filter(x=>x!==id);keep.unshift(id);
+  keep.splice(6).forEach(old=>{idb.del('files',old);delete memFiles[old]}); // keep the 6 most recent books
+  store.set('pdfFiles',keep);
+}
+let curPDF=null,curPDFId=null;
+async function usePDF(id,file){
+  if(curPDFId===id&&curPDF)return curPDF;
+  if(curPDF&&!(ocrRun&&ocrRun.pdf===curPDF))curPDF.destroy();
+  curPDF=null;curPDFId=null;
+  const pdf=await loadPDF(file);curPDF=pdf;curPDFId=id;return pdf;
+}
+const nrm=t=>t.normalize('NFKD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+// split a piece of text into the same words the reader uses, each with a box (x,y,w,h as fractions of the page)
+function tokens(str,x0,w,out,box){const L=str.length||1;
+  for(const g of wordSeg.segment(str)){if(!g.isWordLike)continue;const t=nrm(g.segment);if(!t)continue;
+    out.push([t,...box(x0+w*g.index/L,x0+w*(g.index+g.segment.length)/L).map(v=>Math.round(v*10000)/10000)])}}
+const pw={};
+async function pageWords(n){
+  if(doc.ocr){const t=await idb.get('words',doc.url+':'+n);return t||(n<=doc.ocr.done?[]:null)}
+  const page=await curPDF.getPage(n),vp=page.getViewport({scale:1}),toks=[];
+  for(const l of pageLines(page,await page.getTextContent()))for(const p of l.parts){
+    tokens(p.s,p.x,p.w,toks,(a,b)=>{const[x1,y1]=vp.convertToViewportPoint(a,p.y+p.size*0.85),[x2,y2]=vp.convertToViewportPoint(b,p.y-p.size*0.25);
+      return[Math.min(x1,x2)/vp.width,Math.min(y1,y2)/vp.height,Math.abs(x2-x1)/vp.width,Math.abs(y2-y1)/vp.height]})}
+  return toks;
+}
+function getPW(n){if(!curPDF||n<1||n>curPDF.numPages)return Promise.resolve([]);const k=n+'@'+doc.url;
+  return pw[k]||(pw[k]=pageWords(n).then(t=>{if(!t){delete pw[k];return[]}return t},()=>{delete pw[k];return[]}))}
+// match each spoken word of a sentence to a word on the page (book text was cleaned, so search ahead a little)
+const boxCache=new Map();
+async function alignSent(i){
+  if(boxCache.has(i))return boxCache.get(i);
+  const s=sents[i];if(!s||!s.page){const r={boxes:[],end:null};boxCache.set(i,r);return r}
+  let page=s.page,pos=0;const prev=boxCache.get(i-1);
+  if(prev&&prev.end&&prev.end.page>=s.page&&prev.end.page<=s.page+2){page=prev.end.page;pos=prev.end.pos}
+  const stream=[];
+  for(let p=page;p<=page+2;p++){const t=await getPW(p);t.forEach((tk,k)=>stream.push({p,k,tk}))}
+  const ws=s.words.map(w=>nrm(w.textContent)),boxes=[];let c=pos,end=null;
+  for(let wi=0;wi<ws.length;wi++){const w=ws[wi];let hit=-1,len=1;
+    if(w)for(let j=c;j<Math.min(stream.length,c+400);j++){
+      const t=stream[j].tk[0];let L=0;
+      if(t===w)L=1;else if(j+1<stream.length&&t+stream[j+1].tk[0]===w)L=2; // word broken over two lines
+      if(!L)continue;
+      if(j-c>4&&ws[wi+1]){const nx=stream[j+L];if(!nx||nx.tk[0]!==ws[wi+1]&&!(ws[wi+1].startsWith(nx.tk[0])&&nx.tk[0].length>2))continue} // long jump: next word must match too
+      hit=j;len=L;break}
+    if(hit<0){boxes.push(null);continue}
+    const a=stream[hit];boxes.push({p:a.p,b:a.tk.slice(1)});c=hit+len;const e=stream[c-1];end={page:e.p,pos:e.k+1};
+  }
+  const r={boxes,end};boxCache.set(i,r);return r;
+}
+let pv=false,pgEls=[],pvObs=null,rendered=new Map(),pvFor=-1,pvSentEls=[];
+const pvw=document.createElement('div');pvw.className='pvw';
+function pvOff(){pv=false;document.querySelector('.read').classList.remove('wide');if(pvObs)pvObs.disconnect();pvObs=null;rendered.forEach((t,n)=>unrender(n));rendered.clear();pgEls=[];$('pages').innerHTML='';$('pages').hidden=true;$('viewSw').hidden=true;$('art').hidden=false;boxCache.clear();pvFor=-1}
+async function pvSetup(){
+  pvOff();if(!doc||!doc.pdf)return;
+  const d=doc,file=memFiles[d.url]||await idb.get('files',d.url);
+  if(doc!==d||!file)return;memFiles[d.url]=file;
+  let pdf;try{pdf=await usePDF(d.url,file)}catch(e){console.warn(e);return}
+  if(doc!==d)return;
+  if(d.ocr&&d.ocr.done<d.ocr.total&&!ocrRun)startOCR(pdf,d).catch(ocrFailed); // carry on turning pages into text
+  const box=$('pages'),v=(await pdf.getPage(1)).getViewport({scale:1});
+  if(doc!==d)return;
+  for(let n=1;n<=pdf.numPages;n++){const el=document.createElement('div');el.className='pg';el.dataset.n=n;el.style.aspectRatio=v.width+'/'+v.height;el.innerHTML=`<span class="pn">${n}</span>`;box.appendChild(el);pgEls[n]=el}
+  pvObs=new IntersectionObserver(es=>es.forEach(e=>{const n=+e.target.dataset.n;if(e.isIntersecting)renderPage(n);else unrender(n)}),{rootMargin:'1500px 0px'});
+  pgEls.forEach(el=>el&&pvObs.observe(el));
+  $('viewSw').hidden=false;
+  setView(store.get('view','pages'));
+}
+function setView(v){
+  pv=v==='pages'&&pgEls.length>0;
+  document.querySelector('.read').classList.toggle('wide',pv);
+  $('pages').hidden=!pv;$('art').hidden=pv;
+  $('viewSw').querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.dataset.v==='pages')===pv));
+  if(pv){pvFor=-1;pvSent(idx)}else{pvSentEls.forEach(e=>e.remove());pvw.remove()}
+  if(idx>0||playing)requestAnimationFrame(()=>follow(true));
+}
+$('viewSw').onclick=e=>{const b=e.target.closest('button');if(!b)return;store.set('view',b.dataset.v);setView(b.dataset.v)};
+async function renderPage(n){
+  if(rendered.has(n)||!curPDF)return;const pdf=curPDF;rendered.set(n,{});
+  try{
+    const page=await pdf.getPage(n),v1=page.getViewport({scale:1}),el=pgEls[n];if(!el||rendered.get(n)===undefined)return;
+    el.style.aspectRatio=v1.width+'/'+v1.height;
+    const vp=page.getViewport({scale:(el.clientWidth||680)*Math.min(2,devicePixelRatio||1)/v1.width});
+    const c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);
+    const task=page.render({canvasContext:c.getContext('2d'),viewport:vp});rendered.set(n,task);
+    await task.promise;
+    if(rendered.get(n)!==task){c.width=c.height=0;return}
+    el.prepend(c);page.cleanup();
+  }catch(e){if(!/cancel/i.test(e&&e.name))console.warn(e);if(rendered.get(n)&&!rendered.get(n).cancel)rendered.delete(n)}
+}
+function unrender(n){const t=rendered.get(n);if(!t)return;rendered.delete(n);try{t.cancel&&t.cancel()}catch{}
+  const c=pgEls[n]&&pgEls[n].querySelector('canvas');if(c){c.width=c.height=0;c.remove()}}
+function place(el,p,b,pad){const pg=pgEls[p];if(!pg)return;const px=pad||0;
+  el.style.left=`calc(${b[0]*100}% - ${px}px)`;el.style.top=`calc(${b[1]*100}% - ${px}px)`;el.style.width=`calc(${b[2]*100}% + ${2*px}px)`;el.style.height=`calc(${b[3]*100}% + ${2*px}px)`;
+  if(el.parentNode!==pg)pg.appendChild(el)}
+// light tint over the sentence being read
+async function pvSent(i){
+  if(!pv||i===pvFor)return;pvFor=i;pvSentEls.forEach(e=>e.remove());pvSentEls=[];pvw.style.display='none';
+  if(i<0||!sents[i])return;
+  for(let k=Math.max(0,i-3);k<i;k++)if(!boxCache.has(k)&&sents[k].page===sents[i].page)await alignSent(k); // so the search starts in the right place
+  const r=await alignSent(i);if(pvFor!==i||!pv)return;
+  // merge word boxes on the same line into one strip
+  let cur=null;
+  for(const x of r.boxes){if(!x)continue;const b=x.b;
+    if(cur&&cur.p===x.p&&Math.abs(cur.b[1]-b[1])<b[3]*0.5&&b[0]>=cur.b[0]-0.01&&b[0]-(cur.b[0]+cur.b[2])<0.06){const R=Math.max(cur.b[0]+cur.b[2],b[0]+b[2]);cur.b[2]=R-cur.b[0];cur.b[3]=Math.max(cur.b[3],b[1]+b[3]-cur.b[1])}
+    else{cur&&pvSentEls.push(cur);cur={p:x.p,b:[...b]}}}
+  cur&&pvSentEls.push(cur);
+  pvSentEls=pvSentEls.map(x=>{const e=document.createElement('div');e.className='pvs';place(e,x.p,x.b,2);return e});
+  const first=r.boxes.findIndex(Boolean);
+  if(!playing&&first>=0){place(pvw,r.boxes[first].p,r.boxes[first].b,2);pvw.style.display=''}
+  if(i+1<sents.length)alignSent(i+1);
+}
+function pvWord(i,n){
+  if(i!==pvFor)pvSent(i);
+  const r=boxCache.get(i);if(!r)return;
+  let x=null;for(let k=n;k>=0&&!x;k--)x=r.boxes[k];
+  if(!x){for(let k=n+1;k<r.boxes.length&&!x;k++)x=r.boxes[k]}
+  if(!x)return;
+  place(pvw,x.p,x.b,2);pvw.style.display='';
+}
+// tap a word on the page to start reading from there
+$('pages').addEventListener('click',async e=>{
+  const pg=e.target.closest('.pg');if(!pg)return;const n=+pg.dataset.n,R=pg.getBoundingClientRect();
+  const fx=(e.clientX-R.left)/R.width,fy=(e.clientY-R.top)/R.height;
+  let best=null,bd=1e9;
+  const from=sents.findIndex(s=>s.page>=n-1);if(from<0)return;
+  for(let i=from;i<sents.length&&sents[i].page<=n;i++){
+    const r=await alignSent(i);
+    for(const x of r.boxes){if(!x||x.p!==n)continue;const b=x.b;
+      const dx=Math.max(b[0]-fx,0,fx-b[0]-b[2]),dy=Math.max(b[1]-fy,0,fy-b[1]-b[3]),d=dx*dx+dy*dy*4;if(d<bd){bd=d;best=i}}}
+  if(best===null||bd>0.004)return;
+  idx=best;userScrollAt=0;newEpoch();unlock();play();
+});
 $('pdfIn').onchange=e=>{const f=e.target.files[0];e.target.value='';openPDF(f)};
 // drag a PDF onto the page (laptop)
 addEventListener('dragover',e=>{if($('home').hidden)return;e.preventDefault();document.body.classList.add('drop')});
@@ -519,7 +684,7 @@ addEventListener('drop',e=>{if($('home').hidden)return;e.preventDefault();docume
 /* ================= ROUTING ================= */
 window.onhashchange=route;
 function route(){
-  stop();closeSheet();
+  stop();closeSheet();pvOff();
   let url=decodeURIComponent(location.hash.slice(1));
   const q=new URLSearchParams(location.search).get('url');if(!url&&q){location.replace('#'+encodeURIComponent(q));return}
   if(!url){$('reader').hidden=true;$('player').hidden=true;$('backnow').hidden=true;$('home').hidden=false;showHome();document.title='Read along';return}
@@ -631,8 +796,8 @@ function render(){
   const siteHTML=`<img src="${fav(doc.url)}" alt=""><span>${esc(doc.site)}</span>`;
   $('topSite').innerHTML=siteHTML;$('artSite').innerHTML=siteHTML;$('orig').href=doc.pdf?'#':doc.url;$('orig').style.display=doc.pdf?'none':'';
   $('artTitle').textContent='';
-  const art=$('art');art.innerHTML='';sents=[];listEl=null;
-  addText($('artTitle'),null,doc.title);
+  const art=$('art');art.innerHTML='';sents=[];listEl=null;curPage=0;
+  addText($('artTitle'),null,doc.title);curPage=1;
   renderBlocks(doc.blocks);
   doc.words=sents.reduce((n,s)=>n+s.words.length,0);
   ocrStatus();
@@ -642,12 +807,14 @@ function render(){
   $('startBtn').querySelector('span').textContent=idx>0?`Continue · ${pos.pct}%`:'Start listening';
   $('startBtn').hidden=false;$('doneCard').hidden=true;
   mark();scrollTo(0,0);
+  pvSetup();
 }
 const factsHTML=()=>`<span>${doc.ocr&&doc.ocr.done<doc.ocr.total?'So far: ':''}${mins(doc.words)} min listen</span><span>${doc.words.toLocaleString()} words</span>`;
-let listEl=null;
+let listEl=null,curPage=1;
 function renderBlocks(blocks){
   const art=$('art');
   for(const b of blocks){
+    if(b.page)curPage=b.page;
     if(b.type==='li'){if(!listEl){listEl=document.createElement('ul');art.appendChild(listEl)}addText(listEl,'li',b.text);continue}
     listEl=null;
     if(b.type==='img'){const f=document.createElement('figure');f.innerHTML=`<img loading="lazy" src="${esc(b.src)}" alt="${esc(b.alt)}" onerror="this.parentNode.remove()">`;art.appendChild(f);continue}
@@ -677,7 +844,7 @@ function addText(parent,tag,text,cls){
     }
     if(!words.length){el.appendChild(document.createTextNode(segment));continue}
     el.appendChild(s);el.appendChild(document.createTextNode(' '));
-    sents.push({el:s,text:segment,words,heading});
+    sents.push({el:s,text:segment,words,heading,page:curPage,i});
   }
   if(tag)parent.appendChild(el);
 }
@@ -938,16 +1105,17 @@ function advance(s,my){
   else{idx=sents.length;save();finished()}
 }
 function wordAt(orig,ci){const sp=speakable(orig);let n=0;for(const w of wordSeg.segment(sp)){if(w.index>ci)break;if(w.isWordLike)n++}return Math.max(0,n-1)}
-function lightWord(s,n){const w=s.words[Math.min(n,s.words.length-1)];if(w&&w===curWord)return;if(curWord)curWord.classList.remove('on');if(w){w.classList.add('on');curWord=w}}
+function lightWord(s,n){const w=s.words[Math.min(n,s.words.length-1)];if(w&&w===curWord)return;if(curWord)curWord.classList.remove('on');if(w){w.classList.add('on');curWord=w}if(pv)pvWord(s.i,Math.min(n,s.words.length-1))}
 function estimate(s,my){const cps=14.5*rate();let t=0;s.words.forEach((w,i)=>{setTimeout(()=>{if(my===gen&&playing)lightWord(s,i)},t*1000);t+=(w.textContent.length+1.3)/cps})}
 function pause(){playing=false;gen++;audio.pause();cancelAnimationFrame(tickRAF);synth&&synth.cancel();clearTimeout(fallbackT);setIcon();save();keepAwake(false)}
 function stop(){playing=false;gen++;audio.pause();audioIdx=-1;cancelAnimationFrame(tickRAF);hidePrep();synth&&synth.cancel();clearTimeout(fallbackT);setIcon();keepAwake(false)}
-function finished(){stop();sents.forEach(s=>s.el.classList.remove('on'));if(curWord)curWord.classList.remove('on');mark(true);$('doneCard').hidden=false;$('doneCard').scrollIntoView({behavior:'smooth',block:'center'})}
+function finished(){stop();pvSent(-1);sents.forEach(s=>s.el.classList.remove('on'));if(curWord)curWord.classList.remove('on');mark(true);$('doneCard').hidden=false;$('doneCard').scrollIntoView({behavior:'smooth',block:'center'})}
 function setIcon(){if($('sheet').classList.contains('open'))renderVoices();$('pi').innerHTML=playing?PAUSE:PLAY;$('play').title=playing?'Pause':'Play';if(!playing)$('play').classList.remove('wait')}
 function wordsBefore(i){let n=0;for(let k=0;k<i&&k<sents.length;k++)n+=sents[k].words.length;return n}
 function mark(end){
   sents.forEach((s,i)=>{s.el.classList.toggle('on',i===idx&&!end);s.el.classList.toggle('done',i<idx)});
   if(curWord&&(!sents[idx]||!sents[idx].el.contains(curWord))){curWord.classList.remove('on');curWord=null}
+  if(pv)pvSent(end?-1:idx);
   const done=end?doc.words:wordsBefore(idx),pct=doc.words?Math.round(done/doc.words*100):0;
   $('fill').style.width=pct+'%';$('knob').style.left=pct+'%';
   $('tDone').textContent=pct+'% heard';$('tLeft').textContent=pct>=100?'Finished':`${mins(doc.words-done)} min left`;
@@ -955,13 +1123,15 @@ function mark(end){
 function save(){if(!doc)return;const done=Math.min(doc.words,wordsBefore(idx)),pct=Math.round(done/doc.words*100);
   store.set('pos:'+doc.url,{i:Math.min(idx,sents.length-1),pct});
   const lib=store.get('recent',[]),a=lib.find(x=>x.url===doc.url);if(a){a.pct=pct;a.left=mins(doc.words-done);store.set('recent',lib)}}
+function curEl(){if(!sents[idx])return null;if(!pv)return sents[idx].el;
+  if(pvw.isConnected&&pvw.style.display!=='none'&&pvFor===idx)return pvw;return pgEls[sents[idx].page||1]||null}
 function follow(force){
-  if(!sents[idx])return;
-  const r=sents[idx].el.getBoundingClientRect(),off=r.bottom<70||r.top>innerHeight-200;
-  if((force||($('followT').checked&&Date.now()-userScrollAt>4000))&&off&&!document.hidden){sents[idx].el.scrollIntoView({behavior:'smooth',block:'center'});$('backnow').hidden=true}
+  const el=curEl();if(!el)return;
+  const r=el.getBoundingClientRect(),off=r.bottom<70||r.top>innerHeight-200;
+  if((force||($('followT').checked&&Date.now()-userScrollAt>4000))&&off&&!document.hidden){el.scrollIntoView({behavior:'smooth',block:el===pvw||!pv?'center':'start'});$('backnow').hidden=true}
 }
-function checkAway(){if(!doc||$('reader').hidden||!sents[idx]){$('backnow').hidden=true;return}
-  const r=sents[idx].el.getBoundingClientRect();$('backnow').hidden=!(playing&&(r.bottom<70||r.top>innerHeight-180))}
+function checkAway(){const el=curEl();if(!doc||$('reader').hidden||!el){$('backnow').hidden=true;return}
+  const r=el.getBoundingClientRect();$('backnow').hidden=!(playing&&(r.bottom<70||r.top>innerHeight-180))}
 addEventListener('scroll',()=>{$('top').classList.toggle('sc',scrollY>8);checkAway()},{passive:true});
 ['wheel','touchmove'].forEach(t=>addEventListener(t,()=>userScrollAt=Date.now(),{passive:true}));
 $('backnow').onclick=()=>{userScrollAt=0;follow(true)};
