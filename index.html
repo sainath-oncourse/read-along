@@ -32,6 +32,12 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stro
 .chipbtn{border:0;background:var(--card);border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:6px;font-weight:500;font-size:14px;color:var(--ink2);cursor:pointer}
 .go{border:0;background:var(--accent);color:#fff;border-radius:15px;padding:12px 18px;font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;cursor:pointer}
 .go:active,.chipbtn:active{transform:scale(.97)}
+.pdfrow{display:flex;align-items:center;gap:12px;margin-top:10px}
+.pdfbtn{display:inline-flex;align-items:center;gap:8px;border:1.5px dashed #d9cdd5;background:#fff;border-radius:14px;padding:10px 14px;font-weight:600;font-size:14.5px;color:var(--ink2);cursor:pointer}
+.pdfbtn:hover{border-color:var(--accent);color:var(--accent)}
+.pdfbtn svg{width:18px;height:18px}
+.pdfrow small{color:var(--mute);font-size:13px}
+.drop .paste,.drop .pdfbtn{border-color:var(--accent);background:var(--accent-soft)}
 .msg{font-size:14px;color:var(--mute);margin:12px 4px 0;min-height:21px;display:flex;align-items:center;gap:8px}
 .msg.err{color:#a3243b}
 .spin{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
@@ -182,19 +188,20 @@ details.dev summary::after{content:" ▾"}
 .prep b{font-weight:600}.prep small{display:block;color:var(--mute);font-size:12px;margin-top:2px}
 .prep .bar{height:4px;border-radius:4px;background:#eee7ea;margin-top:8px;overflow:hidden}.prep .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
 .warn{font-size:13.5px;color:var(--ink2);background:#fff8e6;border:1px solid #f4e3b0;border-radius:12px;padding:10px 12px;margin-top:8px}
-@media (max-width:520px){.paste .chipbtn span{display:none}.go span{display:none}.go{padding:12px 14px}.player{padding:12px 12px 10px;border-radius:24px}.pill{min-width:54px;padding:0 10px}.pill .pl{display:none}}
+@media (max-width:520px){.hide-sm{display:none}.paste .chipbtn span{display:none}.go span{display:none}.go{padding:12px 14px}.player{padding:12px 12px 10px;border-radius:24px}.pill{min-width:54px;padding:0 10px}.pill .pl{display:none}}
 </style></head><body>
 
 <!-- HOME -->
 <main class="home" id="home">
   <div class="logo"><i><svg class="i" viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></i>Read along</div>
-  <h1 class="hero">Paste an article. <em>Listen</em> while it lights&nbsp;up.</h1>
-  <p class="sub">Any article, read aloud. The word being spoken is highlighted, so you can follow along or just listen.</p>
+  <h1 class="hero">Paste an article or PDF. <em>Listen</em> while it lights&nbsp;up.</h1>
+  <p class="sub">Any article or PDF, read aloud. The word being spoken is highlighted, so you can follow along or just listen.</p>
   <form class="paste" id="f">
     <input id="u" type="url" inputmode="url" autocomplete="off" placeholder="Paste a link…" aria-label="Article link">
     <button type="button" class="chipbtn" id="pasteBtn" title="Paste from clipboard"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="4" rx="1.5"/><path d="M16 5h1.5A1.5 1.5 0 0 1 19 6.5v13a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-13A1.5 1.5 0 0 1 6.5 5H8"/></svg><span>Paste</span></button>
     <button class="go" id="goBtn"><span>Listen</span><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
   </form>
+  <div class="pdfrow"><label class="pdfbtn"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 18v-6M9 15l3-3 3 3"/></svg>Upload a PDF<input type="file" id="pdfIn" accept="application/pdf,.pdf" hidden></label><small class="hide-sm">or drop one here</small></div>
   <div class="msg" id="msg"></div>
   <div id="contWrap"></div>
   <div id="libWrap"></div>
@@ -266,7 +273,7 @@ const $=id=>document.getElementById(id);
 const store={get:(k,d)=>{try{return JSON.parse(localStorage.getItem('ra:'+k))??d}catch{return d}},set:(k,v)=>{try{localStorage.setItem('ra:'+k,JSON.stringify(v))}catch{}},del:k=>localStorage.removeItem('ra:'+k)};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const host=u=>{try{return new URL(u).hostname.replace(/^www\./,'')}catch{return ''}};
-const fav=u=>`https://www.google.com/s2/favicons?domain=${host(u)}&sz=64`;
+const fav=u=>String(u).startsWith('pdf:')?PDF_ICON:`https://www.google.com/s2/favicons?domain=${host(u)}&sz=64`;
 const synth=window.speechSynthesis;
 const PLAY='<path d="M8 5v14l11-7z"/>',PAUSE='<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>';
 const SPEEDS=[0.8,0.9,1,1.1,1.25,1.5,1.75];
@@ -285,7 +292,7 @@ function showHome(){
       <div class="m">${c.pct}% · about ${c.left||'?'} min left</div></div>
       <div class="pp"><svg viewBox="0 0 24 24">${PLAY}</svg></div></a>`:'';
   const rest=lib.filter(a=>a!==c);
-  $('libWrap').innerHTML=rest.length?`<div class="sec">Your articles</div><div class="lib">${rest.map(a=>`
+  $('libWrap').innerHTML=rest.length?`<div class="sec">Your reading</div><div class="lib">${rest.map(a=>`
     <a class="item" href="#${encodeURIComponent(a.url)}"><div class="fav"><img src="${fav(a.url)}" alt="" loading="lazy"></div>
       <div class="tx"><div class="tt">${esc(a.title)}</div><div class="mm">${esc(a.site)} · ${a.pct>=100?'Finished':a.pct?a.pct+'% heard':(a.mins||'?')+' min listen'}</div></div>
       ${ring(a.pct||0)}
@@ -302,6 +309,108 @@ $('pasteBtn').onclick=async()=>{try{const t=(await navigator.clipboard.readText(
 function open(u){if(!/^https?:\/\//i.test(u))u='https://'+u;location.hash=encodeURIComponent(u)}
 function say(t,kind){$('msg').className='msg'+(kind==='err'?' err':'');$('msg').innerHTML=kind==='load'?`<span class="spin"></span>${esc(t)}`:esc(t)}
 
+/* ================= PDF ================= */
+// Reads the PDF on this device with pdf.js. The file never leaves the phone or laptop.
+const PDFJS='https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/';
+const memDocs={};
+const PDF_ICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="3" fill="#a3243b"/><text x="12" y="16" font-family="Arial" font-weight="700" font-size="6.5" fill="#fff" text-anchor="middle">PDF</text></svg>');
+async function openPDF(file){
+  if(!file)return;
+  if(!/pdf$/i.test(file.type)&&!/\.pdf$/i.test(file.name)){say('That isn’t a PDF. Pick a .pdf file.','err');return}
+  const id='pdf:'+file.name+':'+file.size+':'+file.lastModified;
+  if(store.get('doc:'+id,null)||memDocs[id]){location.hash=encodeURIComponent(id);return}
+  say('Reading the PDF…','load');
+  try{
+    const d=await extractPDF(file,id,p=>say(`Reading the PDF… page ${p.done} of ${p.total}`,'load'));
+    memDocs[id]=d;store.set('doc:'+id,d);
+    location.hash=encodeURIComponent(id);
+  }catch(e){console.warn(e);say(e.userMsg||'Couldn’t read that PDF. It may be password-protected or damaged.','err')}
+}
+async function extractPDF(file,id,onPage){
+  const pdfjs=await import(PDFJS+'pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.mjs';
+  const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+  const pages=[];
+  for(let n=1;n<=pdf.numPages;n++){
+    const page=await pdf.getPage(n),tc=await page.getTextContent();
+    // two-column pages (papers, reports): read the left column, then the right
+    const upright=i=>Math.abs(i.transform[1])<0.01&&Math.abs(i.transform[2])<0.01; // skip sideways margin text
+    const mid=page.getViewport({scale:1}).width/2,its=tc.items.filter(i=>i.str&&i.str.trim()&&upright(i));
+    const L=its.filter(i=>i.transform[4]+i.width<mid*1.02).length,R=its.filter(i=>i.transform[4]>mid*0.98).length;
+    const twoCol=its.length>20&&L>its.length*0.25&&R>its.length*0.25&&(its.length-L-R)<its.length*0.15;
+    const col=it=>twoCol&&it.transform[4]>mid*0.98?1:0;
+    // group text pieces into lines by their vertical position
+    const lines=[];
+    for(const it of tc.items){
+      if(!it.str||!upright(it))continue;
+      const y=it.transform[5],size=Math.round(Math.hypot(it.transform[2],it.transform[3])*10)/10||it.height||10;
+      const c=col(it);
+      let ln=lines.find(l=>l.c===c&&Math.abs(l.y-y)<Math.max(size,l.size)*0.45);
+      if(!ln){ln={y,size,c,parts:[]};lines.push(ln)}
+      ln.parts.push({x:it.transform[4],s:it.str,w:it.width});ln.size=Math.max(ln.size,size);
+    }
+    lines.sort((a,b)=>a.c-b.c||b.y-a.y);
+    for(const l of lines){l.parts.sort((a,b)=>a.x-b.x);let t='',end=null;
+      for(const p of l.parts){if(end!==null&&p.x-end>l.size*0.15&&!/\s$/.test(t)&&!/^\s/.test(p.s))t+=' ';t+=p.s;end=p.x+p.w}
+      l.text=t.replace(/\s+/g,' ').trim()}
+    pages.push(lines.filter(l=>l.text).map(l=>(l.page=n,l)));
+    if(n%3===0||n===pdf.numPages)onPage({done:n,total:pdf.numPages});
+    page.cleanup();
+  }
+  // drop running headers/footers (lines repeating on many pages) and bare page numbers
+  const norm=t=>t.toLowerCase().replace(/\d+/g,'#');
+  // only the top 2 and bottom 2 lines of a page can be a header or footer
+  pages.forEach(ls=>{const byY=[...ls].sort((a,b)=>b.y-a.y);byY.forEach((l,i)=>l.edge=i<2||i>=byY.length-2)});
+  const count={};pages.forEach(ls=>new Set(ls.filter(l=>l.edge).map(l=>norm(l.text))).forEach(k=>count[k]=(count[k]||0)+1));
+  const many=Math.max(3,pages.length*0.4);
+  const sizes=[];pages.forEach(ls=>ls.forEach(l=>{for(let i=0;i<Math.min(l.text.length,200);i+=20)sizes.push(l.size)}));
+  sizes.sort((a,b)=>a-b);const body=sizes[Math.floor(sizes.length/2)]||10;
+  const blocks=[];let para=null;
+  const flush=()=>{if(para&&para.text.trim())blocks.push({type:'p',text:para.text.trim()});para=null};
+  for(const ls of pages){
+    let prevY=null,prevSize=null;
+    for(const l of ls){
+      if(l.edge&&(/^(page\s*)?\d+(\s*(of|\/)\s*\d+)?$/i.test(l.text)||(pages.length>2&&count[norm(l.text)]>=many&&l.text.length<120)))continue;
+      const heading=l.size>=body*1.18&&l.text.length<140&&!/[.,;]$/.test(l.text);
+      if(heading){
+        flush();
+        const last=blocks[blocks.length-1];
+        if(last&&/^h/.test(last.type)&&prevSize===l.size&&prevY!==null&&prevY-l.y<l.size*1.8)last.text+=' '+l.text; // heading over two lines
+        else blocks.push({type:l.size>=body*1.6?'h2':'h3',text:l.text,size:l.size,page:l.page});
+      }else{
+        const gap=prevY===null?0:prevY-l.y;
+        const bullet=/^[•●▪◦]/.test(l.text);
+        if(!para||gap>l.size*1.75||gap<0||bullet)flush();
+        if(!para)para={text:''};
+        const txt=bullet?l.text.replace(/^[•●▪◦]\s*/,''):l.text;
+        // join a word split by a hyphen at the end of a line
+        if(/[a-z]-$/.test(para.text)&&/^[a-z]/.test(txt))para.text=para.text.slice(0,-1)+txt;
+        else para.text+=(para.text?' ':'')+txt;
+        para.endsSentence=/[.!?:]$/.test(txt);
+      }
+      prevY=l.y;prevSize=l.size;
+    }
+    // a paragraph that ended a sentence stops at the page break; otherwise it continues
+    if(para&&para.endsSentence)flush();
+  }
+  flush();
+  const words=blocks.reduce((n,b)=>n+b.text.split(/\s+/).length,0);
+  if(words<20){const e=new Error('notext');e.userMsg='This PDF has no readable text. It’s probably a scan (pictures of pages), which can’t be read aloud.';throw e}
+  let title='';try{const m=await pdf.getMetadata();title=(m.info&&m.info.Title||'').trim()}catch{}
+  if(!title||/^(untitled|microsoft word|document\d*)/i.test(title)||title.length<4){
+    const hs=blocks.filter(b=>/^h/.test(b.type)&&b.page<=2&&b.text.length>3);
+    const h=hs.reduce((a,b)=>!a||b.size>a.size?b:a,null);title=h?h.text:file.name.replace(/\.pdf$/i,'').replace(/[_-]+/g,' ')}
+  const ti=blocks.findIndex(b=>/^h/.test(b.type)&&b.text===title);
+  if(ti>=0&&ti<4)blocks.splice(ti,1);
+  pdf.destroy();
+  return {url:id,title:title.slice(0,160),site:`PDF · ${pages.length} page${pages.length>1?'s':''}`,blocks,pdf:true};
+}
+$('pdfIn').onchange=e=>{const f=e.target.files[0];e.target.value='';openPDF(f)};
+// drag a PDF onto the page (laptop)
+addEventListener('dragover',e=>{if($('home').hidden)return;e.preventDefault();document.body.classList.add('drop')});
+addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('drop')});
+addEventListener('drop',e=>{if($('home').hidden)return;e.preventDefault();document.body.classList.remove('drop');openPDF(e.dataTransfer.files[0])});
+
 /* ================= ROUTING ================= */
 window.onhashchange=route;
 function route(){
@@ -312,7 +421,8 @@ function route(){
   load(url);
 }
 async function load(url){
-  let d=store.get('doc:'+url,null);
+  let d=store.get('doc:'+url,null)||memDocs[url];
+  if(!d&&url.startsWith('pdf:')){location.replace('#');say('Upload that PDF again to keep listening. Your place is saved.','err');return}
   if(!d){
     $('home').hidden=false;$('reader').hidden=true;$('player').hidden=true;showHome();
     say('Fetching the article…','load');$('goBtn').disabled=true;
@@ -414,7 +524,7 @@ function render(){
   $('home').hidden=true;$('reader').hidden=false;$('player').hidden=false;
   document.title=doc.title+' · Read along';
   const siteHTML=`<img src="${fav(doc.url)}" alt=""><span>${esc(doc.site)}</span>`;
-  $('topSite').innerHTML=siteHTML;$('artSite').innerHTML=siteHTML;$('orig').href=doc.url;
+  $('topSite').innerHTML=siteHTML;$('artSite').innerHTML=siteHTML;$('orig').href=doc.pdf?'#':doc.url;$('orig').style.display=doc.pdf?'none':'';
   $('artTitle').textContent='';
   const art=$('art');art.innerHTML='';sents=[];
   addText($('artTitle'),null,doc.title);
