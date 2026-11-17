@@ -500,6 +500,7 @@ function getVoice(v){
   dl[k]=0;renderVoices();
   ask({type:'warm',engine:v.e,voice:v.v}).then(r=>{
     delete dl[k];
+    if(r.err==='stale'){renderVoices();return}
     if(r.err){if(String(r.err).includes('nogpu'))hasGPU=false;alert(`Couldn’t download ${v.e==='k'?'the Studio voices':v.name}. Check your connection and try again.`)}
     else if(v.e==='k')ready.k=true;else ready.p.add(v.v);
     renderVoices();
@@ -542,7 +543,8 @@ $('vlist').addEventListener('click',e=>{
   if(g){e.stopPropagation();getVoice(ALL().find(x=>x.id===g.dataset.g));return}
   const o=e.target.closest('[data-v]');if(!o)return;
   const v=ALL().find(x=>x.id===o.dataset.v);
-  store.set('voice2',v.id);if(!isReady(v)&&!playing)getVoice(v);renderVoices();if(playing){unlock();play()}
+  if(v.id===curSel().id&&playing)return;
+  store.set('voice2',v.id);newEpoch();if(!isReady(v)&&!playing)getVoice(v);renderVoices();if(playing){unlock();play()}
 });
 const SAMPLE='Hi! This is how I sound when I read your articles.';
 async function preview(v,btn){
@@ -561,10 +563,27 @@ let audioIdx=-1,unlocked=false,epoch=0,wid=0,prepFor=null,tickRAF=0;
 const SILENT=URL.createObjectURL(new Blob([new Uint8Array([82,73,70,70,40,0,0,0,87,65,86,69,102,109,116,32,16,0,0,0,1,0,1,0,64,31,0,0,128,62,0,0,2,0,16,0,100,97,116,97,4,0,0,0,0,0,0,0])],{type:'audio/wav'}));
 // iOS only lets audio start from a tap, so play a silent clip on the first tap
 function unlock(){if(unlocked)return;unlocked=true;audio.src=SILENT;audio.play().catch(()=>{unlocked=false})}
-const W=new Worker('tts-worker.js',{type:'module'}),waits={};
-W.onmessage=({data})=>{if(data.type==='progress'){const k=data.engine==='k'?'k':data.voice;dl[k]=data.pct;prepProgress(data);if($('sheet').classList.contains('open'))renderVoices();else updateNow();return}const f=waits[data.id];if(f){delete waits[data.id];f(data)}};
-W.onerror=()=>{};
-const ask=m=>new Promise(res=>{const id=++wid;waits[id]=res;W.postMessage({...m,id,epoch})});
+const waits={};let W,wEngine=null,rvQueued=false;
+function makeWorker(){
+  W=new Worker('tts-worker.js',{type:'module'});
+  W.onmessage=({data})=>{if(data.type==='progress'){const k=data.engine==='k'?'k':data.voice;dl[k]=data.pct;prepProgress(data);softRender();return}const f=waits[data.id];if(f){delete waits[data.id];f(data)}};
+  W.onerror=()=>{};
+}
+makeWorker();
+// redraw the voice menu at most once per frame
+function softRender(){if(rvQueued)return;rvQueued=true;requestAnimationFrame(()=>{rvQueued=false;if($('sheet').classList.contains('open'))renderVoices();else updateNow()})}
+// Only one voice engine lives in memory at a time: switching Studio <-> Light throws the old one away
+function restartWorker(){
+  W.terminate();
+  for(const k of Object.keys(waits)){const f=waits[k];delete waits[k];f({err:'stale'})}
+  for(const k of Object.keys(dl))delete dl[k];
+  wEngine=null;makeWorker();W.postMessage({type:'epoch',n:epoch});
+}
+const ask=m=>{
+  if(m.engine&&wEngine&&m.engine!==wEngine)restartWorker();
+  if(m.engine)wEngine=m.engine;
+  return new Promise(res=>{const id=++wid;waits[id]=res;W.postMessage({...m,id,epoch})});
+};
 const clips=new Map();let clipVoice='';
 function clip(i){
   const v=curSel();
@@ -609,7 +628,7 @@ async function playNeural(){
     audio.playbackRate=rate();audio.play().then(()=>tick(s,my)).catch(()=>{});return}
   if(audio.src!==SILENT)audio.pause();
   const c=clip(idx);
-  for(let k=1;k<=3;k++)if(sents[idx+k])clip(idx+k);
+  for(let k=1;k<=2;k++)if(sents[idx+k])clip(idx+k);
   if(!c.done){$('play').classList.add('wait');prepFor=curSel();
     setTimeout(()=>{if(my===gen&&!c.done&&$('prep').hidden)showPrep(`<b>Getting ${esc(curSel().name)} ready…</b><small>The first time takes a moment.</small>`)},1200)}
   let url;
@@ -688,7 +707,7 @@ function advance(s,my){
   else{idx=sents.length;save();finished()}
 }
 function wordAt(orig,ci){const sp=speakable(orig);let n=0;for(const w of wordSeg.segment(sp)){if(w.index>ci)break;if(w.isWordLike)n++}return Math.max(0,n-1)}
-function lightWord(s,n){const w=s.words[Math.min(n,s.words.length-1)];if(curWord)curWord.classList.remove('on');if(w){w.classList.add('on');curWord=w}}
+function lightWord(s,n){const w=s.words[Math.min(n,s.words.length-1)];if(w&&w===curWord)return;if(curWord)curWord.classList.remove('on');if(w){w.classList.add('on');curWord=w}}
 function estimate(s,my){const cps=14.5*rate();let t=0;s.words.forEach((w,i)=>{setTimeout(()=>{if(my===gen&&playing)lightWord(s,i)},t*1000);t+=(w.textContent.length+1.3)/cps})}
 function pause(){playing=false;gen++;audio.pause();cancelAnimationFrame(tickRAF);synth&&synth.cancel();clearTimeout(fallbackT);setIcon();save();keepAwake(false)}
 function stop(){playing=false;gen++;audio.pause();audioIdx=-1;cancelAnimationFrame(tickRAF);hidePrep();synth&&synth.cancel();clearTimeout(fallbackT);setIcon();keepAwake(false)}

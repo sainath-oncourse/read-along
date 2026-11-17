@@ -9,11 +9,16 @@ let chain = Promise.resolve(); // one job at a time
 
 function progress(engine, voice) {
   const files = {};
+  let last = -1;
   return (p) => {
     if (p && p.total) files[p.file || p.url || 'f'] = [p.loaded || 0, p.total];
     let l = 0, t = 0;
     for (const [a, b] of Object.values(files)) { l += a; t += b; }
-    if (t) postMessage({ type: 'progress', engine, voice, pct: Math.min(99, Math.round(l / t * 100)), mb: Math.round(t / 1e6) });
+    if (!t) return;
+    const pct = Math.min(99, Math.round(l / t * 100));
+    if (pct === last) return; // only tell the page when the number changes (was thousands of messages)
+    last = pct;
+    postMessage({ type: 'progress', engine, voice, pct, mb: Math.round(t / 1e6) });
   };
 }
 
